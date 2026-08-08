@@ -525,7 +525,8 @@ class DeepSeekAdapter:
 
     def chat(self, session_id: str, prompt: str, model_type: str | None = None,
              thinking_enabled: bool = False, search_enabled: bool = False,
-             parent_message_id: int | None = None) -> tuple[str, str]:
+             parent_message_id: int | None = None,
+             ready_out: dict | None = None) -> tuple[str, str]:
         """Send a non-streaming chat message.
 
         Returns ``(content, thinking)``:
@@ -538,13 +539,24 @@ class DeepSeekAdapter:
         could never expose the ``thinking`` content block. Callers that
         only care about the visible text should unpack with
         ``content, _ = adapter.chat(...)``.
+
+        ``ready_out`` is an optional dict the caller provides; when the
+        upstream ``ready`` event is seen the adapter fills
+        ``ready_out["response_message_id"]`` (and keys it by the session
+        actually used). This maintains the multi-turn parent chain — the
+        server caches this id and re-sends it as ``parent_message_id`` on
+        the next turn.
         """
         for attempt in range(1, max(len(RATE_LIMIT_RETRY_DELAYS), 1) + 2):
             try:
-                return self._chat_once(session_id, prompt, model_type=model_type,
-                                       thinking_enabled=thinking_enabled,
-                                       search_enabled=search_enabled,
-                                       parent_message_id=parent_message_id)
+                ret = self._chat_once(session_id, prompt, model_type=model_type,
+                                      thinking_enabled=thinking_enabled,
+                                      search_enabled=search_enabled,
+                                      parent_message_id=parent_message_id,
+                                      ready_out=ready_out)
+                if ready_out is not None:
+                    ready_out["session_id"] = session_id
+                return ret
             except RateLimitError:
                 idx = attempt - 1
                 if idx >= len(RATE_LIMIT_RETRY_DELAYS):
@@ -563,7 +575,8 @@ class DeepSeekAdapter:
 
     def _chat_once(self, session_id: str, prompt: str, model_type: str | None = None,
                    thinking_enabled: bool = False, search_enabled: bool = False,
-                   parent_message_id: int | None = None) -> tuple[str, str]:
+                   parent_message_id: int | None = None,
+                   ready_out: dict | None = None) -> tuple[str, str]:
         resp = self._send_completion(session_id, prompt, stream=False,
                                      model_type=model_type,
                                      thinking_enabled=thinking_enabled,
@@ -579,6 +592,27 @@ class DeepSeekAdapter:
         toast = self._scan_toast_errors(events)
         if toast is not None:
             raise RuntimeError(f"upstream_toast_error: {toast[0]} ({toast[1]})")
+
+        # Multi-turn parent chain: capture the upstream response message id
+        # from the `event: ready` frame (or the response message_id field)
+        # so the caller can cache it and send it as parent_message_id on
+        # the next turn. Without this, reusing a cached session for a
+        # second turn fails with an empty upstream response.
+        if ready_out is not None:
+            for event_type, data in events:
+                if not isinstance(data, dict):
+                    continue
+                mid = None
+                if event_type == "ready" and isinstance(data.get("response_message_id"), int):
+                    mid = data["response_message_id"]
+                elif isinstance(data.get("v"), dict) and 'response' in data["v"]:
+                    r = data["v"]["response"]
+                    if isinstance(r.get("message_id"), int):
+                        mid = r["message_id"]
+                if mid is not None:
+                    ready_out["response_message_id"] = mid
+                    ready_out["session_id"] = session_id
+                    break
 
         # Rate limiting arrives as an `event: hint` with type=error
         # (finish_reason=rate_limit_reached). Surface it instead of
@@ -665,7 +699,8 @@ class DeepSeekAdapter:
     def chat_stream(self, session_id: str, prompt: str,
                     model_type: str | None = None,
                     thinking_enabled: bool = False, search_enabled: bool = False,
-                    parent_message_id: int | None = None):
+                    parent_message_id: int | None = None,
+                    ready_out: dict | None = None):
         """Stream a chat message, yields content tokens.
 
         In expert mode (model_type='expert'), yields dicts with
@@ -673,6 +708,12 @@ class DeepSeekAdapter:
 
         ``parent_message_id`` is the message id from the previous turn; pass
         ``None`` to start a fresh thread.
+
+        ``ready_out`` is an optional dict filled with the upstream
+        ``response_message_id`` (and the session id actually used) when the
+        ``event: ready`` frame arrives. The caller caches it and re-sends it
+        as ``parent_message_id`` on the next turn to keep multi-turn sessions
+        working (a stale parent id makes the upstream reply empty).
 
         A completely empty upstream stream (no tokens at all) is retried
         once with a fresh session; if it is still empty an
@@ -685,7 +726,8 @@ class DeepSeekAdapter:
                         session_id, prompt, model_type=model_type,
                         thinking_enabled=thinking_enabled,
                         search_enabled=search_enabled,
-                        parent_message_id=parent_message_id):
+                        parent_message_id=parent_message_id,
+                        ready_out=ready_out):
                     yielded = True
                     yield token
             except RateLimitError:
@@ -711,7 +753,8 @@ class DeepSeekAdapter:
     def _chat_stream_once(self, session_id: str, prompt: str,
                           model_type: str | None = None,
                           thinking_enabled: bool = False, search_enabled: bool = False,
-                          parent_message_id: int | None = None):
+                          parent_message_id: int | None = None,
+                          ready_out: dict | None = None):
         headers = self._pow_headers("/api/v0/chat/completion")
         if parent_message_id is None:
             mid = self._msg_counters.get(session_id, 0) + 1
@@ -801,6 +844,14 @@ class DeepSeekAdapter:
                         err.get("content") or err.get("msg") or "",
                         err.get("finish_reason") or "upstream_hint_error",
                     )
+
+                # Multi-turn parent chain: record the upstream response
+                # message id from the `event: ready` frame so the caller can
+                # cache and re-send it as parent_message_id next turn.
+                if ready_out is not None and current_event == "ready":
+                    if isinstance(data.get("response_message_id"), int):
+                        ready_out["response_message_id"] = data["response_message_id"]
+                        ready_out["session_id"] = session_id
                 if isinstance(data.get("toast"), dict) and \
                         str(data["toast"].get("type", "")).lower() == "error":
                     t = data["toast"]
