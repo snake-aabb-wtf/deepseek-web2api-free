@@ -20,7 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from adapter import DeepSeekAdapter, UpstreamEmptyError, UpstreamHintError, RateLimitError
+from adapter import (
+    DeepSeekAdapter,
+    UpstreamEmptyError,
+    UpstreamHintError,
+    RateLimitError,
+    UserMutedError,
+)
 from admin import (
     router as admin_router,
     get_pool,

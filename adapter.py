@@ -15,6 +15,7 @@ import struct
 import base64
 import random
 import threading
+import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 from wasmtime import Store, Module, Instance
@@ -89,6 +90,48 @@ class UpstreamHintError(RuntimeError):
 class RateLimitError(UpstreamHintError):
     """Upstream rate limiting (finish_reason ``rate_limit_reached``:
     '消息发送过于频繁，请稍后重试'). Maps to HTTP 429 on the server side."""
+
+
+class UserMutedError(RateLimitError):
+    """The upstream answered with ``biz_msg: "user is muted"`` (biz_code 5)
+    — an account-level penalty, not a protocol issue. The body is a plain
+    JSON 200 (no SSE channel), so the parser previously saw zero tokens and
+    misreported it as an empty response.
+    """
+
+    def __init__(self, message: str, mute_until: float | None = None):
+        super().__init__(message, "user_muted")
+        self.mute_until = mute_until
+
+
+def _mute_msg(raw) -> str | None:
+    """Return a human-readable mute message if ``raw`` is an upstream mute /
+    enforcement body, else None. Detects the shape::
+
+        {"code": 0, "data": {"biz_code": 5, "biz_msg": "user is muted",
+                             "biz_data": {"is_muted": 1, "mute_until": ...}}}
+    """
+    if not isinstance(raw, dict):
+        return None
+    d = raw.get("data")
+    if not isinstance(d, dict):
+        return None
+    biz_msg = str(d.get("biz_msg") or "")
+    biz_code = d.get("biz_code")
+    if biz_code is None:
+        return None
+    if int(biz_code) == 5 or "mute" in biz_msg.lower():
+        until = ""
+        bd = d.get("biz_data")
+        if isinstance(bd, dict) and bd.get("mute_until"):
+            try:
+                until = "，解封时间 " + datetime.datetime.fromtimestamp(
+                    float(bd["mute_until"])
+                ).strftime("%Y-%m-%d %H:%M")
+            except (TypeError, ValueError, OSError, OverflowError):
+                until = ""
+        return f"上游账号已静音：{biz_msg or 'user is muted'}{until}"
+    return None
 
 
 # Upstream hif signature headers: the browser fetches these from dedicated
@@ -557,6 +600,10 @@ class DeepSeekAdapter:
                 if ready_out is not None:
                     ready_out["session_id"] = session_id
                 return ret
+            except UserMutedError:
+                # Account-level penalty: persists until mute_until, retrying
+                # with backoff would only waste time. Surface immediately.
+                raise
             except RateLimitError:
                 idx = attempt - 1
                 if idx >= len(RATE_LIMIT_RETRY_DELAYS):
@@ -566,11 +613,16 @@ class DeepSeekAdapter:
                             extra={"attempt": attempt, "delay": delay})
                 time.sleep(delay)
                 session_id = self.create_session()
+                # Fresh session: no parent id from the stale session may be
+                # re-sent, or the upstream replies empty again.
+                parent_message_id = None
             except UpstreamEmptyError:
                 if attempt > 1:
                     raise
                 log.warning("upstream_empty_retry_nonstream")
                 session_id = self.create_session()
+                # Fresh session: never re-send the stale parent id.
+                parent_message_id = None
         raise UpstreamEmptyError("upstream returned empty response")  # pragma: no cover
 
     def _chat_once(self, session_id: str, prompt: str, model_type: str | None = None,
@@ -584,6 +636,17 @@ class DeepSeekAdapter:
                                      parent_message_id=parent_message_id)
         if not resp.text or not resp.text.strip():
             raise UpstreamEmptyError("upstream returned empty response body")
+
+        # A mute/enforcement body is a plain JSON 200 (not SSE) — check it
+        # before the SSE parse (which would silently drop it).
+        try:
+            raw = json.loads(resp.text)
+        except json.JSONDecodeError:
+            raw = None
+        mute = _mute_msg(raw) if isinstance(raw, dict) else None
+        if mute:
+            raise UserMutedError(mute)
+
         events = self._parse_sse(resp.text)
 
         # Issue #8: upstream may reject with a `toast` event of type=error
@@ -730,6 +793,10 @@ class DeepSeekAdapter:
                         ready_out=ready_out):
                     yielded = True
                     yield token
+            except UserMutedError:
+                # Account-level penalty: persists until mute_until — surface
+                # immediately, no backoff retry.
+                raise
             except RateLimitError:
                 idx = attempt - 1
                 if idx >= len(RATE_LIMIT_RETRY_DELAYS):
@@ -748,6 +815,10 @@ class DeepSeekAdapter:
             if attempt > max(len(RATE_LIMIT_RETRY_DELAYS), 1):
                 break
             session_id = self.create_session()
+            # The retry uses a brand-new session — a parent message id from
+            # the stale session is invalid there and makes the upstream
+            # reply empty again. Start a fresh thread.
+            parent_message_id = None
         raise UpstreamEmptyError("upstream returned empty response")  # pragma: no cover
 
     def _chat_stream_once(self, session_id: str, prompt: str,
@@ -802,22 +873,35 @@ class DeepSeekAdapter:
                 if line.startswith("event: "):
                     current_event = line[7:]
                     continue
-                if not line.startswith("data: "):
-                    continue
-
-                data_str = line[6:]
-                if not data_str:
-                    continue
-                try:
-                    data = json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if not data_str:
+                        continue
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    # Plain JSON body (non-SSE) — e.g. the account-mute
+                    # enforcement payload. Try to parse it; if it doesn't
+                    # look like our envelope, skip.
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
                 if not isinstance(data, dict):
                     continue
 
                 p = data.get("p", "")
                 o = data.get("o", "")
                 v = data.get("v", "")
+
+                # Account-level mute enforcement arrives as a plain JSON
+                # 200 body (no SSE channel) — surface it as a real error
+                # instead of an empty response.
+                mute = _mute_msg(data)
+                if mute:
+                    raise UserMutedError(mute)
 
                 # Upstream may reject with a `toast` event of type=error
                 # (issue #8). Surface it as a real error so the SSE
