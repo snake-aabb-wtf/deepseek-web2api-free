@@ -20,7 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from adapter import DeepSeekAdapter, UpstreamEmptyError, UpstreamHintError, RateLimitError
+from adapter import (
+    DeepSeekAdapter,
+    UpstreamEmptyError,
+    UpstreamHintError,
+    RateLimitError,
+    UserMutedError,
+)
 from admin import (
     router as admin_router,
     get_pool,
@@ -347,7 +353,11 @@ class AcquiredAccount:
         ds_id = self.adapter.create_session()
         self._session_id = ds_id
         if self._cache_key:
-            SESSION_CACHE.put(self._cache_key, ChatSession(chat_session_id=ds_id))
+            sess = ChatSession(chat_session_id=ds_id)
+            SESSION_CACHE.put(self._cache_key, sess)
+            # Keep the live reference so record_message_id() can update the
+            # parent id in place (the cache stores the same object).
+            self._cached_session = sess
         return ds_id
 
     @property
@@ -363,15 +373,27 @@ class AcquiredAccount:
         """
         return self._parent_message_id
 
-    def record_message_id(self, mid: int) -> None:
-        """After sending a message, write the new parent_message_id back
-        into the cache so the next turn threads correctly.
+    def record_message_id(self, mid: int, session_id: str | None = None) -> None:
+        """After a successful turn, record the upstream response message id
+        (and the session that actually answered) into the cache so the next
+        turn sends the correct ``parent_message_id``.
+
+        Fixes the v3.2.2 leftover: previously never called, so a reused
+        cached session sent ``parent_message_id=0`` on the second turn and
+        the upstream replied with an empty body.
         """
-        if self._cache_key and self._cached_session is not None:
-            self._cached_session.next_message_id()
-            # Also store the actual upstream mid so the next turn's body
-            # carries the right parent_message_id.
-            self._cached_session.parent_message_id = mid
+        if not self._cache_key:
+            return
+        sess = self._cached_session
+        if sess is None:
+            sess = SESSION_CACHE.get(self._cache_key)
+        if sess is None:
+            sess = ChatSession(chat_session_id=session_id or "")
+            SESSION_CACHE.put(self._cache_key, sess)
+        if session_id:
+            sess.chat_session_id = session_id
+        sess.parent_message_id = mid
+        self._cached_session = sess
 
     def release(self):
         pool.release(self.acct)
@@ -693,9 +715,14 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
     try:
         ds_id = acq.create_session()
         t0 = time.time()
+        ready_out: dict = {}
         content, thinking = acq.adapter.chat(ds_id, prompt, model_type=model_type,
                                               thinking_enabled=thinking_mode, search_enabled=search_enabled,
-                                              parent_message_id=acq.parent_message_id)
+                                              parent_message_id=acq.parent_message_id,
+                                              ready_out=ready_out)
+        if ready_out.get("response_message_id") is not None:
+            acq.record_message_id(ready_out["response_message_id"],
+                                  ready_out.get("session_id"))
         get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False)
@@ -734,6 +761,7 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
 
     async def event_stream():
         nonlocal t0
+        ready_out: dict = {}
         try:
             for event in stream_response(
                 msg_id, MODEL_NAME,
@@ -741,11 +769,15 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                                        model_type=model_type,
                                        thinking_enabled=thinking_mode,
                                        search_enabled=search_enabled,
-                                       parent_message_id=acq.parent_message_id),
+                                       parent_message_id=acq.parent_message_id,
+                                       ready_out=ready_out),
                 tool_names,
                 thinking_mode=thinking_mode,
             ):
                 yield event
+            if ready_out.get("response_message_id") is not None:
+                acq.record_message_id(ready_out["response_message_id"],
+                                      ready_out.get("session_id"))
             get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
         except Exception as e:
             get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False)
@@ -782,9 +814,14 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
     try:
         ds_id = acq.create_session()
         t0 = time.time()
+        ready_out: dict = {}
         content, thinking = acq.adapter.chat(ds_id, prompt, model_type=model_type,
                                               thinking_enabled=thinking_mode, search_enabled=search_enabled,
-                                              parent_message_id=acq.parent_message_id)
+                                              parent_message_id=acq.parent_message_id,
+                                              ready_out=ready_out)
+        if ready_out.get("response_message_id") is not None:
+            acq.record_message_id(ready_out["response_message_id"],
+                                  ready_out.get("session_id"))
         completion_tokens = count_text(content) + count_text(thinking)
         get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
                            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
@@ -883,6 +920,10 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
     async def event_stream():
         nonlocal t0
         completion_parts: list[str] = []
+        # Multi-turn: filled by adapter with the upstream response message id
+        # (and the actual session id after a retry-swap). Recorded into the
+        # session cache on success so the next turn has a valid parent.
+        ready_out: dict = {}
         try:
             yield _openai_chunk(proxy_id, finish=False)
             role_sent = False
@@ -893,11 +934,20 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
             sieve = StreamSieve(parse_fn=_parse_fn)
             full_buf = ""
 
+            def _record_turn():
+                # Persist the upstream response message id (and the session
+                # actually used, e.g. after an internal retry swap) so the
+                # next turn's parent_message_id is valid.
+                if ready_out.get("response_message_id") is not None:
+                    acq.record_message_id(ready_out["response_message_id"],
+                                          ready_out.get("session_id"))
+
             for token in acq.adapter.chat_stream(ds_id, prompt,
                                                   model_type=model_type,
                                                   thinking_enabled=thinking_mode,
                                                   search_enabled=search_enabled,
-                                                  parent_message_id=acq.parent_message_id):
+                                                  parent_message_id=acq.parent_message_id,
+                                                  ready_out=ready_out):
                 if isinstance(token, dict):
                     tt = token.get("__type")
                     if tt == "status":
@@ -930,6 +980,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                     elif evt.type == "tool_calls":
                         for chunk in _emit_tool_calls_chunks(evt.data, proxy_id):
                             yield chunk
+                        _record_turn()
                         yield "data: [DONE]\n\n"
                         return
 
@@ -951,6 +1002,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                         yield chunk
 
             if had_tool:
+                _record_turn()
                 yield "data: [DONE]\n\n"
                 return
 
@@ -964,9 +1016,11 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                         role_sent = True
                     for chunk in _emit_tool_calls_chunks(tc_result, proxy_id):
                         yield chunk
+                    _record_turn()
                     yield "data: [DONE]\n\n"
                     return
 
+            _record_turn()
             yield _openai_chunk(proxy_id, finish=True)
             yield "data: [DONE]\n\n"
             completion_tokens = count_text("".join(completion_parts))

@@ -4,7 +4,14 @@
 
 ---
 
-## v3.0.0 → v3.2.1 变更摘要
+## v3.0.0 → v3.2.3 变更摘要
+
+### v3.2.3（2026-08-08）：多轮会话复用修复（parent 链维护）
+
+- **根因**：v3.2.2 遗留问题——同模式多轮复用 session 时，缓存的 `parent_message_id` 未随轮次更新（始终为 `0`），第二次请求发 `parent_message_id=0` → 上游返回空响应，失败一次后才自愈
+- **修复**：adapter 从 SSE `event: ready` 帧提取 `response_message_id`（非流式同时兼容 `v.response.message_id`），通过新增的 `ready_out` 回调参数返回给 server；`AcquiredAccount.record_message_id()` 将真实 message_id + 实际使用 session 写回 `SESSION_CACHE`（重试换新会话时同步更新 `chat_session_id`），并修复 `create_session()` 未保存 `_cached_session` 引用导致记录失效的问题
+- **接入点**：4 条路径全部接线（OpenAI/Anthropic × 流式/非流式），工具调用分支同样记录
+- 完整清单：`docs/release-notes/v3.2.3.md`
 
 ### v3.2.1（2026-08-03）：空响应根因修复
 
@@ -19,7 +26,7 @@
 - **测试覆盖**：`tests/test_adapter.py`（15 用例，hint/toast/空响应重试/退避/hif）+ `tests/test_account_pool.py`（10 用例，env 兜底/池空/只读保护/持久化），全套 81 测试
 - 流式 toast/hint 检测修复：上游错误 data 为顶层 dict（非 `v` 包装），两者均检查
 - **SESSION_CACHE 模式隔离**：缓存 key 按流式/非流式区分（`stream:`/`nonstream:`），修复"流式创建 session 被非流式复用 → 空响应"；限流/空响应时 `invalidate` 缓存（失败一次后自愈）
-- **已知遗留**：同模式多轮复用 session 仍会失败一次再自愈——缓存的 `parent_message_id` 未随轮次更新（复用 session 第二次请求 parent 错误）。完整修复需从 SSE `ready` 事件提取 `response_message_id` 维护链（待办）
+- **已知遗留 → 已修复（v3.2.3）**：同模式多轮复用 session 第二次请求 parent 错误导致的空响应，已通过 SSE `ready` 事件提取 `response_message_id` 维护 parent 链解决（见 v3.2.3 摘要）
 
 ### v3.2.0（2026-08-02）：维护版本
 
@@ -116,7 +123,7 @@
 
 ### 1.3 项目版本
 
-- 当前主线：`v3.2.1`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析
+- 当前主线：`v3.2.3`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析 + 多轮会话复用
 - 自 v3.0.0 起开源版与预览版已合并为单一主线，无独立 `--pre` 分支
 
 ---
@@ -2515,7 +2522,7 @@ if new_hash != old_hash:
 
 ---
 
-> 本文档最后更新：2026-05-08
+> 本文档最后更新：2026-08-08
 > 基于 `chat.deepseek.com` HAR 抓包分析（2026-05-06）
 > WASM 引擎版本：`sha3_wasm_bg.wasm`（DeepSeek 前端提取，含 `__wbindgen_export_0` malloc / `__wbindgen_export_1` realloc / `__wbindgen_export_2` free）
 > 协议版本：DeepSeek Chat v2.0.0 (X-Client-Version)
