@@ -1717,7 +1717,46 @@ class ContentPart(BaseModel):
 | `DEEPSEEK_JITTER_SECS` | `0.4`（v3.2.2+） | 上游调用前随机 sleep（0~N 秒），降低触发上游限流概率；`0` 禁用 |
 | `DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` | `5,15`（v3.2.2+） | 上游限流（`rate_limit_reached`）时的退避秒数列表，每项重试一次并换新会话；空则禁重试 |
 
-> 其余可选变量（`API_KEYS`、`HOST`、限流、加密、日志、`MODEL_ROUTES`、`SESSION_CACHE_TTL`、`DEEPSEEK_IMPERSONATE` 等）见 `.env.example` 注释。
+> 其余可选变量见下表（`.env.example` 有完整注释，此处是给 Agent/自动化配置的速查）：
+
+| 变量 | 默认值 | 用途 | 非交互关键度 |
+|------|--------|------|------|
+| `API_KEYS` | `""` | `/v1/*` 客户端鉴权，逗号分隔多 key | ⭐必配(公网) |
+| `DEEPSEEK_API_KEY` | `""` | 单 key 别名，与 `API_KEYS` 等价 | 可选 |
+| `ALLOW_UNAUTHENTICATED_API` | `false` | 是否允许 /v1/* 无鉴权 | 仅本地开发 |
+| `HOST` | `127.0.0.1` | 监听地址；`0.0.0.0`+默认密码拒绝启动 | ⭐反代需关注 |
+| `PORT` | `8080` | 监听端口 | |
+| `MODEL_NAME` | `deepseek-chat` | /v1/models 显示名（不影响实际模型） | |
+| `MODEL_ROUTES` | `""` | JSON 路由表，按 model 字段切 quick/expert | ⭐多模型路由 |
+| `MODE` / `THINKING` / `SEARCH` | `auto` | 行为三独立维度 | ⭐强制模式 |
+| `ACCOUNT_STORE_PATH` | `data/accounts.json` | 账号池持久化文件路径 | ⭐非交互账号池 |
+| `DEEPSEEK_ENCRYPTION_KEY` | `""` | Fernet key，accounts.json 加密(v2) | ⭐公网安全 |
+| `CLIENT_RPM_PER_KEY` | `60` | 每 key 每分钟请求数(0=不限) | ⭐限流 |
+| `CLIENT_RPM_PER_IP` | `120` | 每 IP 每分钟请求数(0=不限) | ⭐限流 |
+| `ENABLE_RATE_LIMIT` | `true` | 限流总开关 | |
+| `SESSION_CACHE_TTL` | `600` | 多轮会话缓存秒数，0=禁多轮 | ⭐多轮 |
+| `DEEPSEEK_TOKEN` / `_N` | `""` | DeepSeek 账号凭证(token)，`_1`为多账号 | ⭐兜底账号 |
+| `DEEPSEEK_COOKIES` / `_N` | `""` | DeepSeek 账号 Cookie | ⭐兜底账号 |
+| `DEEPSEEK_EMAIL_N` | `env-N` | 多账号标识 | |
+| `DEEPSEEK_PROXY` / `_N` | `""` | 每账号上游代理 URL | ⭐反检测 |
+| `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi TLS 指纹 profile | |
+| `DEEPSEEK_JITTER_SECS` | `0.4` | 调用前随机 sleep 秒数 | |
+| `DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` | `5,15` | 上游限流退避秒数列，空=禁重试 | |
+| `LOG_LEVEL` | `INFO` | DEBUG/INFO/WARNING/ERROR | |
+| `LOG_FORMAT` | `json` | json(生产)/text(开发) | |
+| `ALLOWED_ORIGINS` | `""` | CORS 允许 origin，逗号分隔 | 浏览器客户端 |
+| `ALLOW_CORS_CREDENTIALS` | `false` | 带凭证跨域 | |
+| `TRUSTED_PROXIES` | `""` | 信任代理 IP/CIDR，设后才采纳 XFF | ⭐反代 |
+| `ALLOW_INSECURE_PUBLIC_DEFAULTS` | `false` | 公网+默认密码的显式确认(不建议) | |
+| `DISABLE_AUTO_RECOVER` | `false` | 禁用账号自动恢复 | |
+
+**给自动化/代理工具的配置 checklist（按顺序）：**
+1. `API_KEYS` 必配（否则 /v1/* 报 503）→ Bearer/x-api-key 鉴权
+2. 账号池：多账号→写 `data/accounts.json`；单兜底→`.env` 的 `DEEPSEEK_TOKEN_1/COOKIES_1`
+3. 公网→`HOST=127.0.0.1`+反代+`TRUSTED_PROXIES`；或 `HOST=0.0.0.0`+自己上 TLS/WAF
+4. 限流默认够用；多 worker(gunicorn -w N) 实际限流=N×配置值
+5. 改 `.env` 必须**重启进程**才生效（load_dotenv 只在模块加载时调用一次）
+
 
 #### MODE 详细说明
 
@@ -1925,6 +1964,67 @@ def check_health(acct) -> bool:
   - 池内**0**个账号时：`acquire()` 返回 env 兜底账号，服务不因池空而 503
   - webui 账号池页显示该条目（灰色只读），删除接口对 `env-*` 无效（不在池内，返回 404）
   - 实现：`AccountPool._env_fallback`（`_load_env_fallback()`），`acquire()` 池空分支、`get_all()`/`stats()` 含兜底账号
+
+### 15.8 非交互式账号池配置（代理 / 自动化工具专用）
+
+> **场景**：给 SDK、脚本、curl、CI、代理等**不经过 WebUI 面板**的自动化工具配置多账号轮询。
+> **要点**：v3.0.0+ 账号池的**主配置源是 `data/accounts.json` 文件**，不是 `.env`。`.env` 只提供「单账号只读兜底」。要跑**多账号轮询**，非交互场景必须直接写 `data/accounts.json`。
+
+**`data/accounts.json` 完整 schema（v1 明文版）：**
+
+```json
+{
+  "version": 1,
+  "accounts": [
+    {
+      "id": "acc-001",
+      "email": "acc-001",
+      "token": "<DeepSeek Bearer token>",
+      "cookies": "cf_clearance=xxx; session=yyy; ...",
+      "created_at": 1781234567,
+      "updated_at": 1781234567
+    },
+    {
+      "id": "acc-002",
+      "email": "acc-002",
+      "token": "<token2>",
+      "cookies": "<cookies2>",
+      "created_at": 1781234567,
+      "updated_at": 1781234567
+    }
+  ]
+}
+```
+
+- 字段：`id`(可选,默认自动生成)、`email`(显示标识)、`token`、`cookies`(必填两个)、`created_at`/`updated_at`(可选,整数 epoch 秒)。
+- `version`：`1`(明文) 或 `2`(Fernet 加密)。缺省按明文解析。
+- 该文件**必须** `chmod 600`、所在目录 `700`。含明文 DeepSeek token+cookie，泄露=账号被滥用。
+
+**非交互配置步骤：**
+
+```bash
+# 1. 写入账号池文件（可脚本生成）
+cat > /path/to/project/data/accounts.json <<'JSON'
+{"version":1,"accounts":[
+  {"email":"acc-001","token":"<token>","cookies":"<cookies>"}
+]}
+JSON
+chmod 600 /path/to/project/data/accounts.json
+chmod 700 /path/to/project/data
+
+# 2. 可选：改存储路径（不改则默认 data/accounts.json）
+#    .env 或环境变量设：ACCOUNT_STORE_PATH=/path/to/accounts.json
+
+# 3. 配置 API 鉴权（非交互必须，否则 /v1/* 报 503）
+#    API_KEYS=***   （多个逗号分隔)
+
+# 4. 启动
+python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```
+
+- **加密存储（推荐公网）**：设 `DEEPSEEK_ENCRYPTION_KEY`(Fernet 32B base64)，首次启动会把 `version:1` 明文自动迁移为 `version:2` 加密，并留 `accounts.json.v1.bak`。此时**不要再手写明文文件**（会被 detect_store_version 判成 v2 encrypted 又无 key 而拒绝加载）。
+- **写入时机**：在服务**启动前**写文件，或运行中调 `POST /admin/api/accounts`(需 admin token)。服务启动时 `_load_persisted_accounts()` 一次性全量加载。
+- **只保留一个兜底账号**：直接用 `.env` 的 `DEEPSEEK_TOKEN_1/COOKIES_1`（或 legacy `DEEPSEEK_TOKEN/COOKIES`），池空自动兜底，不必写 accounts.json。
 
 ---
 
