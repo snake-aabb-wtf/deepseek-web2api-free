@@ -165,6 +165,48 @@ curl http://localhost:8080/v1/models \
 
 ---
 
+## 非交互式账号池配置（代理 / 自动化工具）
+
+> **给 SDK、脚本、curl、CI、代理用**，不经过 WebUI 面板。要点：v3.0.0+ 账号池的**主配置源是 `data/accounts.json` 文件**，`.env` 只提供单账号只读兜底。要跑**多账号轮询**，非交互场景必须写 `data/accounts.json`。
+
+**`data/accounts.json`（v1 明文）完整格式：**
+
+```json
+{
+  "version": 1,
+  "accounts": [
+    {"email": "acc-001", "token": "<token>", "cookies": "<cookies>"},
+    {"email": "acc-002", "token": "<token>", "cookies": "<cookies>"}
+  ]
+}
+```
+
+- 必填 `token` + `cookies`；可选 `email`/`id`/`created_at`/`updated_at`
+- 文件 `chmod 600`、目录 `chmod 700`（含明文 DeepSeek 凭证，泄露=账号被滥用）
+- 服务启动时一次性全量加载；改文件后需重启进程
+- **加密**：设 `DEEPSEEK_ENCRYPTION_KEY`(Fernet) 后首次启动自动把明文迁移为 v2 加密，并留 `accounts.json.v1.bak`；此时勿再手写明文
+
+**非交互配置步骤：**
+
+```bash
+# 1. 写账号池文件（可脚本生成）
+cat > project_dir/data/accounts.json <<'JSON'
+{"version":1,"accounts":[{"email":"acc-001","token":"<token>","cookies":"<cookies>"}]}
+JSON
+chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
+
+# 2. 配 API 鉴权（非交互必需，否则 /v1/* → 503）
+#    API_KEYS=***    （多个逗号分隔）
+
+# 3. 启动
+python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```
+
+- **单账号兜底**（不写文件）：直接在 `.env` 设 `DEEPSEEK_TOKEN_1`/`DEEPSEEK_COOKIES_1`（或 legacy `DEEPSEEK_TOKEN`/`DEEPSEEK_COOKIES`），池空自动兜底。
+- **改存储路径**：`ACCOUNT_STORE_PATH` 环境变量。
+
+---
+
 ## API 文档
 
 ### `POST /v1/chat/completions`
