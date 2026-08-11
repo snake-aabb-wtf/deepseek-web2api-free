@@ -164,6 +164,48 @@ The account pool supports two kinds of accounts:
 - **Settings** — read-only view of the currently effective runtime configuration.
 ---
 
+## Non-interactive Account Pool Configuration (for proxies / automation)
+
+> For SDKs, scripts, curl, CI, and proxies that do **not** go through the WebUI panel. Key point: since v3.0.0 the account pool's **primary config source is the `data/accounts.json` file**; `.env` only provides a single-account read-only fallback. For **multi-account round-robin**, non-interactive setups must write `data/accounts.json`.
+
+**Full `data/accounts.json` format (v1 plaintext):**
+
+```json
+{
+  "version": 1,
+  "accounts": [
+    {"email": "acc-001", "token": "<token>", "cookies": "<cookies>"},
+    {"email": "acc-002", "token": "<token>", "cookies": "<cookies>"}
+  ]
+}
+```
+
+- `token` + `cookies` are required; optional `email`/`id`/`created_at`/`updated_at`.
+- `chmod 600` the file and `chmod 700` its directory (it holds plaintext DeepSeek credentials; leaking them means account abuse).
+- The pool loads the file once at startup; restart the process after editing.
+- **Encryption**: set `DEEPSEEK_ENCRYPTION_KEY` (Fernet); on first startup plaintext is migrated to encrypted v2 automatically, leaving `accounts.json.v1.bak`. Do not hand-write plaintext afterward.
+
+**Non-interactive setup steps:**
+
+```bash
+# 1. Write the account pool file (can be script-generated)
+cat > project_dir/data/accounts.json <<'JSON'
+{"version":1,"accounts":[{"email":"acc-001","token":"<token>","cookies":"<cookies>"}]}
+JSON
+chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
+
+# 2. Configure API auth (required for non-interactive use, else /v1/* → 503)
+#    API_KEYS=***    (comma-separated for multiple)
+
+# 3. Start
+python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```
+
+- **Single-account fallback** (no file needed): set `DEEPSEEK_TOKEN_1`/`DEEPSEEK_COOKIES_1` in `.env` (or legacy `DEEPSEEK_TOKEN`/`DEEPSEEK_COOKIES`), used automatically when the pool is empty.
+- **Change the store path**: `ACCOUNT_STORE_PATH` environment variable.
+
+---
+
 ## API Documentation
 
 ### `POST /v1/chat/completions`
