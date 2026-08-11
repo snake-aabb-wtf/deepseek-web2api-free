@@ -1,4 +1,6 @@
 # DeepSeek Chat API Proxy
+**[English Version](README_en.md) · [中文版](README.md)**
+
 
 > 将 DeepSeek Chat (chat.deepseek.com) 的私有 API 转换为 OpenAI / Anthropic 兼容格式。
 
