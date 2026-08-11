@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 import time
 import uuid
 from typing import Optional, Union, Any
@@ -340,6 +341,7 @@ class AcquiredAccount:
         self._parent_message_id: int | None = None
         self._cache_key = cache_key
         self._cached_session: ChatSession | None = None
+        self._released = False
         # If we have a cache key, try to reuse the existing session first.
         if cache_key:
             self._cached_session = SESSION_CACHE.get(cache_key)
@@ -360,6 +362,34 @@ class AcquiredAccount:
             self._cached_session = sess
         return ds_id
 
+    def prepare_prompt(self, full_prompt: str) -> str:
+        """Return the prompt to send upstream.
+
+        On a reused cached session this may be an incremental *tail* (only
+        the new user turn) via ``delta_prompt`` — the parent chain keeps the
+        context server-side. Resending the full history on every turn would
+        make the DeepSeek conversation embed previous turns repeatedly
+        (quadratic growth, bot-spam signature).
+
+        Call *before* ``create_session()``: when the history diverges from
+        what was previously sent, the cached session is invalidated so the
+        next ``create_session()`` starts a fresh chain.
+        """
+        cached = self._cached_session
+        if self._cache_key and cached is not None and cached.sent_prompt:
+            prev = cached.sent_prompt
+            if full_prompt.startswith(prev) and full_prompt != prev:
+                tail = full_prompt[len(prev):].lstrip("\n ")
+                if tail:
+                    return tail
+            if not full_prompt.startswith(prev):
+                # Divergent history — abandon the cached chain entirely
+                # instead of duplicating it under a mismatched parent.
+                SESSION_CACHE.invalidate(self._cache_key)
+                self._cached_session = None
+                self._parent_message_id = None
+        return full_prompt
+
     @property
     def session_id(self) -> str:
         if self._session_id is None:
@@ -373,7 +403,8 @@ class AcquiredAccount:
         """
         return self._parent_message_id
 
-    def record_message_id(self, mid: int, session_id: str | None = None) -> None:
+    def record_message_id(self, mid: int, session_id: str | None = None,
+                          full_prompt: str = "") -> None:
         """After a successful turn, record the upstream response message id
         (and the session that actually answered) into the cache so the next
         turn sends the correct ``parent_message_id``.
@@ -393,17 +424,42 @@ class AcquiredAccount:
         if session_id:
             sess.chat_session_id = session_id
         sess.parent_message_id = mid
+        if full_prompt:
+            sess.sent_prompt = full_prompt
         self._cached_session = sess
 
     def release(self):
+        if self._released:
+            return
+        self._released = True
         pool.release(self.acct)
+        _UPSTREAM_LIMITER.release()
 
 
 def _acquire(cache_key: str | None = None) -> AcquiredAccount:
-    acct = pool.acquire()
+    # Global upstream concurrency cap (e.g. coding agents spawning parallel
+    # sub-agents). Wait for a slot before grabbing a pool account so queued
+    # requests don't hold accounts busy.
+    _UPSTREAM_LIMITER.acquire()
+    try:
+        acct = pool.acquire()
+    except Exception:
+        _UPSTREAM_LIMITER.release()
+        raise
     if acct is None:
+        _UPSTREAM_LIMITER.release()
         raise HTTPException(status_code=503, detail="All accounts busy, try again later")
     return AcquiredAccount(acct, cache_key=cache_key)
+
+
+def _upstream_limit_from_env() -> int:
+    try:
+        return max(1, int(os.environ.get("DEEPSEEK_MAX_CONCURRENCY", "2")))
+    except ValueError:
+        return 2
+
+
+_UPSTREAM_LIMITER = threading.BoundedSemaphore(_upstream_limit_from_env())
 
 
 def _extract_openai_user(messages: list[ChatMessage], request: Request) -> str:
@@ -713,16 +769,18 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
                          cache_key: str | None = None):
     acq = _acquire(cache_key=cache_key)
     try:
+        eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
         t0 = time.time()
         ready_out: dict = {}
-        content, thinking = acq.adapter.chat(ds_id, prompt, model_type=model_type,
+        content, thinking = acq.adapter.chat(ds_id, eff, model_type=model_type,
                                               thinking_enabled=thinking_mode, search_enabled=search_enabled,
                                               parent_message_id=acq.parent_message_id,
                                               ready_out=ready_out)
         if ready_out.get("response_message_id") is not None:
             acq.record_message_id(ready_out["response_message_id"],
-                                  ready_out.get("session_id"))
+                                  ready_out.get("session_id"),
+                                  full_prompt=prompt)
         get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False)
@@ -751,6 +809,7 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                             cache_key: str | None = None):
     acq = _acquire(cache_key=cache_key)
     try:
+        eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False)
@@ -765,7 +824,7 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
         try:
             for event in stream_response(
                 msg_id, MODEL_NAME,
-                acq.adapter.chat_stream(ds_id, prompt,
+                acq.adapter.chat_stream(ds_id, eff,
                                        model_type=model_type,
                                        thinking_enabled=thinking_mode,
                                        search_enabled=search_enabled,
@@ -777,7 +836,8 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                 yield event
             if ready_out.get("response_message_id") is not None:
                 acq.record_message_id(ready_out["response_message_id"],
-                                      ready_out.get("session_id"))
+                                      ready_out.get("session_id"),
+                                      full_prompt=prompt)
             get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
         except Exception as e:
             get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False)
@@ -812,16 +872,18 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
     prompt_tokens = count_text(prompt)
     acq = _acquire(cache_key=cache_key)
     try:
+        eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
         t0 = time.time()
         ready_out: dict = {}
-        content, thinking = acq.adapter.chat(ds_id, prompt, model_type=model_type,
+        content, thinking = acq.adapter.chat(ds_id, eff, model_type=model_type,
                                               thinking_enabled=thinking_mode, search_enabled=search_enabled,
                                               parent_message_id=acq.parent_message_id,
                                               ready_out=ready_out)
         if ready_out.get("response_message_id") is not None:
             acq.record_message_id(ready_out["response_message_id"],
-                                  ready_out.get("session_id"))
+                                  ready_out.get("session_id"),
+                                  full_prompt=prompt)
         completion_tokens = count_text(content) + count_text(thinking)
         get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
                            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
@@ -908,6 +970,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
     prompt_tokens = count_text(prompt)
     acq = _acquire(cache_key=cache_key)
     try:
+        eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False, prompt_tokens=prompt_tokens)
@@ -940,9 +1003,10 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                 # next turn's parent_message_id is valid.
                 if ready_out.get("response_message_id") is not None:
                     acq.record_message_id(ready_out["response_message_id"],
-                                          ready_out.get("session_id"))
+                                          ready_out.get("session_id"),
+                                          full_prompt=prompt)
 
-            for token in acq.adapter.chat_stream(ds_id, prompt,
+            for token in acq.adapter.chat_stream(ds_id, eff,
                                                   model_type=model_type,
                                                   thinking_enabled=thinking_mode,
                                                   search_enabled=search_enabled,
