@@ -929,3 +929,4 @@ This is free and unencumbered software released into the public domain.
 - [DeepSeek](https://deepseek.com) — 优秀的 AI 模型与平台
 - OpenAI — API 标准格式参考
 - [wasmtime-py](https://github.com/bytecodealliance/wasmtime-py) — WASM 运行时
+- [@minhmc2007](https://github.com/minhmc2007) — 贡献多轮会话复用修复（PR #10，v3.3.0）
