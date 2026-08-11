@@ -1,86 +1,10 @@
 # DeepSeek Chat API Proxy
-**[English Version](README_en.md) · [中文版](README.md)**
-
 
 > 将 DeepSeek Chat (chat.deepseek.com) 的私有 API 转换为 OpenAI / Anthropic 兼容格式。
 
 > **🤖 全 AI 生成声明**: 本项目没有一行人工手写代码。所有的 API 端点设计、协议逆向、PoW 求解、SSE 解析、格式映射、文档编写等等全部由 **DeepSeek v4 Flash 模型** + **Claude Code** 协作完成。
 
 **免责声明**: 本项目仅限学习研究使用。非官方项目，与 DeepSeek 无关。使用需自行承担风险，不保证稳定性。
-
----
-
-## v3.2.2 新增
-
-- **上游限流自适应**：触发上游限流（429）时自动退避重试（`DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` 默认 `5,15`，每次换新会话）；`DEEPSEEK_JITTER_SECS` 默认值改为 `0.4`，降低触发限流概率
-- **hif 签名头**：自动拉取 `hif-leim/hif-dliq.deepseek.com/query` 并发送 `x-hif-leim`/`x-hif-dliq`（TTL 缓存 600s；拉取失败静默降级，不影响请求）
-- **测试覆盖**：新增 `tests/test_adapter.py`（15 用例）与 `tests/test_account_pool.py`（10 用例），全套 81 个测试
-- 修复流式 toast/hint 错误检测（上游错误 data 为顶层 JSON 而非 `v` 包装）
-
----
-
-## v3.2.1 修复
-
-2026-08-03 补丁版本——**定位并修复流式/非流式空响应的根因**：
-
-- **上游限流提示被吞**：请求过频时 chat.deepseek.com 返回 HTTP 200 + SSE `event: hint`（`finish_reason=rate_limit_reached`，"消息发送过于频繁，请稍后重试"）且无内容 token；adapter 原先不解析 `hint` 事件，把限流当成"空内容"返回
-- **修复**：新增 `RateLimitError`/`UpstreamHintError` 解析 hint（流式 + 非流式），`/v1/chat/completions` 限流时返回 **HTTP 429** 明确报错（不再静默返回 200 空内容），其他 hint 错误返回 502
-- 实用建议：低频请求（`DEEPSEEK_JITTER_SECS=0.4`）或多账号分摊，避免触发上游限流
-- 详见 [docs/release-notes/v3.2.1.md](docs/release-notes/v3.2.1.md)
-
----
-
-## v3.2.0 新增
-
-2026-08 维护版本（基于 v3.0.0），主要改进：
-
-- **start.bat 一键启动重构**：自动检测/创建虚拟环境（`.venv`/`venv`/`env`）、校验并自动安装依赖、WebUI 产物缺失时自动 `npm` 构建、启动前打印访问地址并默认 3 秒后自动打开浏览器（`WEBUI_OPEN=0` 跳过）；端口占用只结束本项目进程（用 PowerShell 替代已废弃的 `wmic`）
-- **WebUI 大修**：修复静态资源 404 白屏（vite `base: '/webui/'` + react-router `basename`）、7 处功能 bug 修复与界面美化、Playground 重写（参数与 DeepSeek 真实转发字段对应、移除无效的温度滑块、推理过程可视化、快速/专家两种模型模式）
-- **鉴权**：`/v1/*` 接受有效 admin 会话 token——webui 登录后可直接调用模型列表与 Playground，不再被登出
-- **账号池**：`.env` 凭证改为池空时的只读兜底（面板账号优先，池空不 503）
-- **上游空响应加固**：上游偶发返回空 SSE 时自动换新会话重试一次，仍空则明确报错（非流式 502 / 流式错误帧），不再静默返回空内容
-- **适配器**：`X-Client-Version` 对齐浏览器（2.3.0）、移除过时的 `X-App-Version`；逆向记录上游 `x-hif-*` 签名头机制
-- 完整变更见 [docs/release-notes/v3.2.0.md](docs/release-notes/v3.2.0.md)
-
----
-
-## v3.0.0 新增
-
-v3.0.0 将管理面板整体重写为 **React + shadcn/ui 单页应用**（`webui-new/`）：
-
-- **全新 WebUI** — Vite + React 18 + TypeScript + shadcn/ui，6 个页面（登录 / 概览 / 账号池 / Playground / 设置 / 404），明暗主题切换，Recharts 实时趋势图
-- **新增后端接口** — `GET /admin/api/history`（30 秒滚动窗口的请求量 / 延迟时序）、`GET /admin/api/env`（脱敏后的运行时配置视图）
-- **构建方式** — 进入 `webui-new/` 执行 `npm install && npm run build`（Windows 也可用 `build.bat`），产物输出到 `webui-new/dist/`；未构建时访问 `/webui` 会返回构建提示 JSON
-- API 端点（`/v1/*`、`/admin/api/*`）完全向后兼容；唯一破坏性变化是 WebUI 产物目录从 `webui/` 变为 `webui-new/dist/`
-
----
-
-## v2.2.0 新增
-
-v2.2.0 在保持向后兼容的同时引入了大量安全和功能改进：
-
-- **安全加固**
-  - 默认 `HOST=127.0.0.1`（不再默认 `0.0.0.0`）；公网绑定 + 默认密码时拒绝启动
-  - 结构化 JSON 日志 (`LOG_FORMAT=json`)，可切换为 `text`
-  - `data/accounts.json` 可选 Fernet (AES-128-CBC + HMAC) 加密 (`DEEPSEEK_ENCRYPTION_KEY`)
-  - CORS 严格化 (默认同源，需 `ALLOWED_ORIGINS` 显式允许)
-  - XFF 仅在 `TRUSTED_PROXIES` 白名单内的代理下游才被信任
-  - 全部响应注入 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` 安全头
-  - WebUI 额外注入 `Content-Security-Policy` 头
-- **Bug 修复**
-  - Anthropic 非流式端点不再丢弃 `thinking` 内容
-  - 账号错误状态自动后台恢复（每 3 次失败一次）
-  - `usage` 字段返回真实 token 数（基于 tiktoken cl100k_base；无 tiktoken 时回退到字符启发式）
-  - StreamSieve 边界：迭代式排空、`<` 边界、1 MB 缓冲上限（可配置）
-- **新功能**
-  - **模型路由** (`MODEL_ROUTES`) — 按 `model` 字段切换 quick/expert
-  - **多轮会话** (`SESSION_CACHE_TTL`) — 同一 user/会话复用 chat_session_id
-  - **客户端限流** (`CLIENT_RPM_PER_KEY` / `CLIENT_RPM_PER_IP`) — 双维度滑动窗口
-  - **P50/P95/P99 延迟** + **成功率** 在 `/admin/api/stats` 暴露
-- **工程化**
-  - 56 个 pytest 单元测试，CI 矩阵 (Python 3.10 / 3.11 / 3.12)
-  - 所有 silent pass (`except Exception: pass`) 替换为 `logger.exception(...)`
-  - `print(WARNING...)` 全部替换为结构化 logger
 
 ---
 
