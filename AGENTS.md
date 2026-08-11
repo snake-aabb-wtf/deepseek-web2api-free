@@ -4,7 +4,16 @@
 
 ---
 
-## v3.0.0 → v3.2.3 变更摘要
+## v3.0.0 → v3.2.4 变更摘要
+
+### v3.2.4（2026-08-11）：上游并发上限 + 增量 prompt（防历史泛滥/防静音）
+
+- **并发上限**：`DEEPSEEK_MAX_CONCURRENCY`（默认 `2`）全局限制同时进行中的上游请求（跨账号），超出的请求排队等待而非 503（`_UPSTREAM_LIMITER` `BoundedSemaphore`，在 `_acquire()` 中先于 `pool.acquire()` 获取、`AcquiredAccount.release()` 幂等释放）。编码智能体（opencode/Claude Code）会并行派出多个子 agent，此前会并发轰炸上游诱发账号静音
+- **增量 prompt（delta）**：`ChatSession.sent_prompt` 记录上一轮实际发送的完整 prompt；`AcquiredAccount.prepare_prompt()` 对客户端重发的完整历史做前缀比对——历史是上一轮的延续时只把**新增尾部**发给上游（上下文由 parent 链在服务端维系）；完全重复视为同一轮重试（重发）；历史发散则失效缓存换新会话。此前每次请求都重发整段历史，DeepSeek 会话中每条消息都内嵌之前所有轮次（平方级膨胀，自动化特征显著，是账号被静音的重要诱因）
+- **静音识别**：上游对账号级处罚返回 200 + 普通 JSON `{"data":{"biz_code":5,"biz_msg":"user is muted","mute_until":...}}`（非 SSE，旧代码解析为"空响应"）。`UserMutedError`（`RateLimitError` 子类）在流式/非流式两条路径识别并立即抛出（跳过退避重试），映射 429 并带解封时间
+- **重试带清理**：rate-limit/空响应换新会话重试时不再携带旧会话的 `parent_message_id`（新会话里的无效 parent 会导致上游再次空响应）
+- **SESSION_CACHE_TTL 默认 600 → 1800**：长编码会话（agent 10 分钟+ 空闲）不再频繁被迫新建上游会话
+- 完整清单：`docs/release-notes/v3.2.4.md`
 
 ### v3.2.3（2026-08-08）：多轮会话复用修复（parent 链维护）
 
@@ -123,7 +132,7 @@
 
 ### 1.3 项目版本
 
-- 当前主线：`v3.2.3`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析 + 多轮会话复用
+- 当前主线：`v3.2.4`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析 + 多轮会话复用（parent 链 + 增量 prompt）+ 上游并发上限
 - 自 v3.0.0 起开源版与预览版已合并为单一主线，无独立 `--pre` 分支
 
 ---
@@ -1716,6 +1725,7 @@ class ContentPart(BaseModel):
 | `SEARCH` | `auto` | 联网搜索控制：`auto`/`enabled`/`disabled` |
 | `DEEPSEEK_JITTER_SECS` | `0.4`（v3.2.2+） | 上游调用前随机 sleep（0~N 秒），降低触发上游限流概率；`0` 禁用 |
 | `DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` | `5,15`（v3.2.2+） | 上游限流（`rate_limit_reached`）时的退避秒数列表，每项重试一次并换新会话；空则禁重试 |
+| `DEEPSEEK_MAX_CONCURRENCY` | `2`（v3.2.4+） | 全局上游并发上限（跨账号），超出排队等待；编码 agent 并行子任务不会并发轰炸上游 |
 
 > 其余可选变量（`API_KEYS`、`HOST`、限流、加密、日志、`MODEL_ROUTES`、`SESSION_CACHE_TTL`、`DEEPSEEK_IMPERSONATE` 等）见 `.env.example` 注释。
 
