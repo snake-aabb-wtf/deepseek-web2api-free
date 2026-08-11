@@ -45,9 +45,36 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-SESSION_CACHE_TTL = _env_int("SESSION_CACHE_TTL", 600)
+SESSION_CACHE_TTL = _env_int("SESSION_CACHE_TTL", 1800)
 SESSION_CACHE_MAX = _env_int("SESSION_CACHE_MAX", 10_000)
 SWEEP_INTERVAL = 60  # seconds
+
+
+def delta_prompt(prev: str, cur: str) -> str | None:
+    """Compute the incremental prompt tail for a reused chat session.
+
+    Agents (opencode, Claude Code, ...) always resend the full message
+    history on every turn. If the proxy re-sends that whole history as the
+    upstream ``prompt`` on a reused session, the DeepSeek conversation
+    embeds every previous turn again per message (quadratic growth) —
+    which looks like bot spam and can trigger account mutes.
+
+    Returns:
+      * the new tail only when ``cur`` extends ``prev`` ("User: <new>" only)
+      * ``cur`` itself when it is an exact replay of the same turn
+        (client retry — the upstream should answer again)
+      * ``None`` when the histories diverge — the caller should abandon
+        the cached session and start a fresh chain (a partial or edited
+        history can't be expressed as a continuation)
+    """
+    if not isinstance(prev, str) or not isinstance(cur, str):
+        return cur
+    if cur == prev:
+        return cur
+    if cur.startswith(prev):
+        tail = cur[len(prev):].lstrip("\n ")
+        return tail if tail else cur
+    return None
 
 
 @dataclass
@@ -55,6 +82,10 @@ class ChatSession:
     chat_session_id: str
     parent_message_id: int = 0
     msg_counters: dict[str, int] | None = None
+    # The exact full prompt text that was sent for the last turn of this
+    # session. Used to compute incremental (delta) prompts on the next turn
+    # so the upstream conversation doesn't embed repeated history.
+    sent_prompt: str = ""
 
     def next_message_id(self) -> int:
         """Return the next ``parent_message_id`` and bump the counter."""
