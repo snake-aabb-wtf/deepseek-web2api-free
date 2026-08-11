@@ -4,6 +4,15 @@
 
 ---
 
+## v3.0.0 → v3.3.1 变更摘要
+
+### v3.3.1（2026-08-11）：防轰炸加固 + 双语文档
+
+- **合并 PR #11（防账号静音）**：上游并发上限 `DEEPSEEK_MAX_CONCURRENCY`(默认2) + 增量(delta)prompt + 静音识别(`UserMutedError`→429) + 重试 parent 清理 + `SESSION_CACHE_TTL` 默认 600→1800（详见 [docs/release-notes/v3.3.1.md](docs/release-notes/v3.3.1.md)）
+- **文档**：新增 `README_en.md` 英文完整版 + 双语顶部语言切换链接；删除 README 顶部的版本日志块（changelog 归 docs/release-notes/）；README/AGENTS.md 补「非交互式账号池配置」（accounts.json schema + 自动化配置 checklist）
+
+---
+
 ## v3.0.0 → v3.2.4 变更摘要
 
 ### v3.2.4（2026-08-11）：上游并发上限 + 增量 prompt（防历史泛滥/防静音）
@@ -132,7 +141,7 @@
 
 ### 1.3 项目版本
 
-- 当前主线：`v3.2.4`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析 + 多轮会话复用（parent 链 + 增量 prompt）+ 上游并发上限
+- 当前主线：`v3.3.1`（2026-08）— 基础功能 + 工具调用 + 专家模式 + 联网搜索 + React WebUI 管理面板 + 上游限流提示解析 + 多轮会话复用（parent 链 + 增量 prompt）+ 上游并发上限
 - 自 v3.0.0 起开源版与预览版已合并为单一主线，无独立 `--pre` 分支
 
 ---
