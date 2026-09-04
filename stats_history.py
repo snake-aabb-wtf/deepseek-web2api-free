@@ -50,7 +50,7 @@ class StatsHistory:
                 stats.total_requests,
                 stats.success_requests,
                 stats.failed_requests,
-                float(stats.avg_latency_ms) if stats.avg_latency_ms > 0 else 0.0,
+                float(stats.total_latency_ms / stats.total_requests) if stats.total_requests > 0 else 0.0,
             ))
 
     def points(self) -> list[dict]:
