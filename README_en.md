@@ -895,3 +895,4 @@ You are free to copy, modify, publish, use, compile, sell, or distribute this so
 - OpenAI — API standard format reference
 - [wasmtime-py](https://github.com/bytecodealliance/wasmtime-py) — WASM runtime
 - [@minhmc2007](https://github.com/minhmc2007) — contributed the multi-turn session reuse fix (PR #10, v3.3.0)
+- [@Zhangkc](https://github.com/Zhangkc) — contributed the request-trend chart fix: stats sampler read a nonexistent avg_latency_ms attribute (PR #14, v3.3.2)

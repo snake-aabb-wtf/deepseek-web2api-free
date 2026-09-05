@@ -898,3 +898,4 @@ This is free and unencumbered software released into the public domain.
 - OpenAI — API 标准格式参考
 - [wasmtime-py](https://github.com/bytecodealliance/wasmtime-py) — WASM 运行时
 - [@minhmc2007](https://github.com/minhmc2007) — 贡献多轮会话复用修复（PR #10，v3.3.0）
+- [@Zhangkc](https://github.com/Zhangkc) — 贡献请求趋势图修复：stats 采样器读取不存在的 avg_latency_ms 属性（PR #14，v3.3.2）
