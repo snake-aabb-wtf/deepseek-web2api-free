@@ -23,12 +23,18 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           notes="docs/release-notes/${TAG}.md"
+          prerelease_args=()
+          if [[ "$TAG" == *-* ]]; then
+            prerelease_args+=(--prerelease)
+          fi
           if [ -f "$notes" ]; then
             gh release create "$TAG" \
               --title "$TAG" \
+              "${prerelease_args[@]}" \
               --notes-file "$notes"
           else
             gh release create "$TAG" \
               --title "$TAG" \
+              "${prerelease_args[@]}" \
               --generate-notes
           fi

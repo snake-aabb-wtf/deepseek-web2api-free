@@ -99,12 +99,7 @@ if "!NEED_BUILD!"=="0" (
         echo        仅启动后端 API；稍后可运行 %WEBUI_DIR%\scripts\build.bat 手动构建。
     ) else (
         pushd "%WEBUI_DIR%"
-        if not exist node_modules (
-            echo        安装 npm 依赖（首次构建可能需要几分钟）...
-            call npm install --no-audit --no-fund
-        )
-        echo        执行 npm run build ...
-        call npm run build
+        call scripts\build.bat
         set "BUILD_RC=!errorlevel!"
         popd
         if !BUILD_RC! neq 0 (
