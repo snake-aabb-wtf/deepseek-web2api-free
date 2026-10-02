@@ -164,7 +164,7 @@ echo   服务启动后可通过以下地址访问：
 echo      WebUI 管理面板:  http://%ACCESS_HOST%:%PORT%/webui/
 echo      OpenAI API:      http://%ACCESS_HOST%:%PORT%/v1/chat/completions
 echo      健康检查:        http://%ACCESS_HOST%:%PORT%/health
-echo   管理密码: 见 .env 中 DEEPSEEK_ADMIN_PASSWORD 设置
+"%PY%" -c "import os; from dotenv import load_dotenv; load_dotenv('.env'); print('  管理密码: ' + os.environ.get('DEEPSEEK_ADMIN_PASSWORD', 'admin'))"
 echo   ============================================================
 echo.
 if not "%WEBUI_OPEN%"=="0" (
