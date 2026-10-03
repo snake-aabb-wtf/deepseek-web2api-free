@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -26,12 +27,17 @@ from pathlib import Path
 # 1. Pin a known admin password so the login positive-path is deterministic.
 # 2. Force a throwaway account-store path so the test never reads or writes
 #    a real user accounts.json.
-# 3. Use a non-zero PORT so the test never accidentally binds.
-# 4. Make sure adapters/POW paths are inert: no upstream calls are made in
+# 3. Isolate the API-key database and disable legacy env keys.
+# 4. Use a non-zero PORT so the test never accidentally binds.
+# 5. Make sure adapters/POW paths are inert: no upstream calls are made in
 #    this test, but we still want a stable, isolated env.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SMOKE_TMP_DIR = tempfile.TemporaryDirectory(prefix="ds2api-smoke-")
 os.environ.setdefault("DEEPSEEK_ADMIN_PASSWORD", "ci-smoke-test-pw")
 os.environ.setdefault("ACCOUNT_STORE_PATH", str(PROJECT_ROOT / "data" / "accounts.ci.json"))
+os.environ["API_KEY_STORE_PATH"] = str(Path(_SMOKE_TMP_DIR.name) / "api_keys.sqlite3")
+os.environ["API_KEYS"] = ""
+os.environ["DEEPSEEK_API_KEY"] = ""
 os.environ.setdefault("ALLOW_UNAUTHENTICATED_API", "false")
 os.environ.setdefault("HOST", "127.0.0.1")
 os.environ.setdefault("PORT", "18080")

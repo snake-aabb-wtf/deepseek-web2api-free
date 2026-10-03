@@ -71,6 +71,7 @@ jobs:
                           tests/test_ip_utils.py \
                           tests/test_adapter.py \
                           tests/test_account_pool.py \
+                          tests/test_api_keys.py \
                           -v --tb=short
 
   e2e:

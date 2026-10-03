@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -129,25 +130,29 @@ def _run(scenario: str, py: str, env_overrides: dict) -> None:
 
 
 def main() -> int:
-    _run("1 (functional surface)", SCENARIO_1_PY, {
-        "HOST": "127.0.0.1",
-        "DEEPSEEK_ADMIN_PASSWORD": ADMIN_PW_STRONG,
-        "API_KEYS": API_KEY,
-        "MODEL_ROUTES": MODEL_ROUTES_JSON,
-        "LOG_LEVEL": "WARNING",
-    })
-    _run("2 (startup refusal)", SCENARIO_2_PY, {
-        "HOST": "0.0.0.0",
-        "DEEPSEEK_ADMIN_PASSWORD": "admin",
-        "ALLOW_INSECURE_PUBLIC_DEFAULTS": "false",
-        "LOG_LEVEL": "WARNING",
-    })
-    _run("3 (startup bypass)", SCENARIO_3_PY, {
-        "HOST": "0.0.0.0",
-        "DEEPSEEK_ADMIN_PASSWORD": "admin",
-        "ALLOW_INSECURE_PUBLIC_DEFAULTS": "true",
-        "LOG_LEVEL": "WARNING",
-    })
+    with tempfile.TemporaryDirectory(prefix="ds2api-e2e-") as key_store_root:
+        _run("1 (functional surface)", SCENARIO_1_PY, {
+            "HOST": "127.0.0.1",
+            "DEEPSEEK_ADMIN_PASSWORD": ADMIN_PW_STRONG,
+            "API_KEYS": API_KEY,
+            "API_KEY_STORE_PATH": str(Path(key_store_root) / "scenario-1" / "api_keys.sqlite3"),
+            "MODEL_ROUTES": MODEL_ROUTES_JSON,
+            "LOG_LEVEL": "WARNING",
+        })
+        _run("2 (startup refusal)", SCENARIO_2_PY, {
+            "HOST": "0.0.0.0",
+            "DEEPSEEK_ADMIN_PASSWORD": "admin",
+            "API_KEY_STORE_PATH": str(Path(key_store_root) / "scenario-2" / "api_keys.sqlite3"),
+            "ALLOW_INSECURE_PUBLIC_DEFAULTS": "false",
+            "LOG_LEVEL": "WARNING",
+        })
+        _run("3 (startup bypass)", SCENARIO_3_PY, {
+            "HOST": "0.0.0.0",
+            "DEEPSEEK_ADMIN_PASSWORD": "admin",
+            "API_KEY_STORE_PATH": str(Path(key_store_root) / "scenario-3" / "api_keys.sqlite3"),
+            "ALLOW_INSECURE_PUBLIC_DEFAULTS": "true",
+            "LOG_LEVEL": "WARNING",
+        })
     print()
     print("All e2e scenarios PASSED")
     return 0
