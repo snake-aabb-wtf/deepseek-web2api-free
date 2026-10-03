@@ -378,7 +378,7 @@ async def env_info(request: Request):
         "log_format": os.environ.get("LOG_FORMAT", "json").lower(),
         "dsml_max_buffer_bytes": int(os.environ.get("DSML_MAX_BUFFER_BYTES", "1048576") or 1048576),
         "uptime_secs": int(time.time() - _stats.start_time),
-        "server_version": "3.3.6-rc.2",
+        "server_version": "3.3.6-rc.3",
         "env_overrides": [
             {"name": "HOST", "value": _env("HOST") or "127.0.0.1", "is_default": _flag("HOST") == "default"},
             {"name": "PORT", "value": _env("PORT") or "8080", "is_default": _flag("PORT") == "default"},
