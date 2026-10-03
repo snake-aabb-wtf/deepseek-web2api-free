@@ -89,7 +89,7 @@ export default function AccountsPage() {
               <Users className="mx-auto h-10 w-10 text-muted-foreground/40" />
               <h3 className="mt-3 text-sm font-medium">暂无账号</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                点击右上角"添加账号"创建持久账号；或在 .env 中配置 DEEPSEEK_TOKEN_1/2/...
+                点击右上角“添加账号”，也可以将账号写入 data/accounts.json。
               </p>
             </div>
           ) : (

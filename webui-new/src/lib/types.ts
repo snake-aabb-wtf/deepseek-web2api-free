@@ -30,7 +30,7 @@ export interface StatsResponse {
 export interface Account {
   id: string
   email: string
-  source: 'file' | 'env' | string
+  source: string
   state: 'idle' | 'busy' | 'error' | string
   error_count: number
   last_error: string
@@ -40,7 +40,6 @@ export interface Account {
   token_preview: string
   cookies_preview: string
   credential_fingerprint: string
-  read_only: boolean
 }
 
 export interface AccountsResponse {

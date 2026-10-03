@@ -2,8 +2,8 @@
 Account pool — multi-account management for DeepSeek Chat proxy.
 
 Manages multiple DeepSeek accounts, tracks their states (idle/busy/error),
-provides credential health checking, session lifecycle, env bootstrapping,
-and persistent panel-managed accounts.
+provides credential health checking, session lifecycle, and persistent
+panel-managed accounts.
 """
 import hashlib
 import json
@@ -86,7 +86,7 @@ class Account:
     cookies: str
     email: str = ""
     id: str = field(default_factory=_account_id)
-    source: str = "file"       # file | env
+    source: str = "file"       # persisted account
     proxy: str = ""             # per-account upstream proxy (optional)
     created_at: int = field(default_factory=_now)
     updated_at: int = field(default_factory=_now)
@@ -124,7 +124,6 @@ class Account:
             "token_preview": _mask_secret(self.token),
             "cookies_preview": _cookie_names(self.cookies),
             "credential_fingerprint": self.fingerprint[:12],
-            "read_only": self.source == "env",
         }
 
     def to_store_dict(self) -> dict:
@@ -150,9 +149,6 @@ class AccountPool:
             configured_store = Path(__file__).resolve().parent / configured_store
         self._store_path = configured_store
         self._load_persisted_accounts()
-        # .env credentials are NOT pre-loaded into the pool anymore; they
-        # act as a read-only fallback used only when the pool is empty.
-        self._env_fallback: Optional[Account] = self._load_env_fallback()
 
     # ── Loading / persistence ────────────────────────────────────
 
@@ -205,52 +201,6 @@ class AccountPool:
                 updated_at=updated_at,
             ))
 
-    def _load_env_fallback(self) -> Optional[Account]:
-        """Read .env credentials as a read-only fallback account.
-
-        Replaces the old `_load_env_accounts` behaviour: the account is
-        NOT added to the pool, so panel-managed accounts take priority
-        and the env credentials are only used when the pool has zero
-        accounts (see `acquire`). Numbered format is tried first
-        (DEEPSEEK_TOKEN_1/COOKIES_1/...), then the legacy single-account
-        format (DEEPSEEK_TOKEN / DEEPSEEK_COOKIES).
-        """
-        for i in range(1, 101):
-            token = os.environ.get(f"DEEPSEEK_TOKEN_{i}", "").strip()
-            cookies = os.environ.get(f"DEEPSEEK_COOKIES_{i}", "").strip()
-            if not token and not cookies:
-                continue
-            if not token or not cookies:
-                log.warning("skipping_env_fallback_incomplete", extra={"index": i})
-                continue
-            email = os.environ.get(f"DEEPSEEK_EMAIL_{i}", "").strip() or f"env-{i}"
-            proxy = os.environ.get(f"DEEPSEEK_PROXY_{i}", "").strip()
-            return Account(
-                id=f"env-{i}",
-                email=email,
-                token=token,
-                cookies=cookies,
-                proxy=proxy,
-                source="env",
-            )
-
-        token = os.environ.get("DEEPSEEK_TOKEN", "").strip()
-        cookies = os.environ.get("DEEPSEEK_COOKIES", "").strip()
-        if token and cookies:
-            email = os.environ.get("DEEPSEEK_EMAIL", "").strip() or "env-default"
-            proxy = os.environ.get("DEEPSEEK_PROXY", "").strip()
-            return Account(
-                id="env-default",
-                email=email,
-                token=token,
-                cookies=cookies,
-                proxy=proxy,
-                source="env",
-            )
-        if token or cookies:
-            log.warning("skipping_legacy_env_account_incomplete")
-        return None
-
     def _ensure_store_dir(self):
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(self._store_path.parent, 0o700)
@@ -258,10 +208,7 @@ class AccountPool:
     def _save_persisted_accounts_locked(self):
         self._ensure_store_dir()
         if crypto_is_enabled():
-            accounts = [
-                encrypt_account_dict(a.to_store_dict())
-                for a in self._accounts if a.source == "file"
-            ]
+            accounts = [encrypt_account_dict(a.to_store_dict()) for a in self._accounts]
             data = {
                 "version": STORE_VERSION_ENCRYPTED,
                 "encryption": "fernet",
@@ -270,7 +217,7 @@ class AccountPool:
         else:
             data = {
                 "version": STORE_VERSION_PLAIN,
-                "accounts": [a.to_store_dict() for a in self._accounts if a.source == "file"],
+                "accounts": [a.to_store_dict() for a in self._accounts],
             }
         payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
@@ -294,7 +241,7 @@ class AccountPool:
 
     # ── CRUD ───────────────────────────────────────────────────
 
-    def add(self, token: str, cookies: str, email: str = "", persist: bool = True) -> Account:
+    def add(self, token: str, cookies: str, email: str = "") -> Account:
         token = (token or "").strip()
         cookies = (cookies or "").strip()
         email = (email or "").strip()
@@ -313,13 +260,12 @@ class AccountPool:
                 token=token,
                 cookies=cookies,
                 email=email,
-                source="file" if persist else "memory",
+                source="file",
                 created_at=now,
                 updated_at=now,
             )
             self._accounts.append(acct)
-            if persist:
-                self._save_persisted_accounts_locked()
+            self._save_persisted_accounts_locked()
             return acct
 
     def get_by_id(self, account_id: str) -> Optional[Account]:
@@ -332,8 +278,6 @@ class AccountPool:
             acct = next((a for a in self._accounts if a.id == account_id), None)
             if acct is None:
                 raise KeyError("Account not found")
-            if acct.source == "env":
-                raise PermissionError("Environment accounts are read-only; edit .env and restart the service")
             new_token = acct.token if token is None or token == "" else token.strip()
             new_cookies = acct.cookies if cookies is None or cookies == "" else cookies.strip()
             new_email = acct.email if email is None else email.strip()
@@ -362,8 +306,6 @@ class AccountPool:
             for idx, acct in enumerate(self._accounts):
                 if acct.id != account_id:
                     continue
-                if acct.source == "env":
-                    raise PermissionError("Environment accounts are read-only; edit .env and restart the service")
                 self._accounts.pop(idx)
                 if self._next_idx >= len(self._accounts):
                     self._next_idx = 0
@@ -381,10 +323,7 @@ class AccountPool:
 
     def get_all(self) -> list[dict]:
         with self._lock:
-            items = [a.to_dict() for a in self._accounts]
-            if self._env_fallback is not None:
-                items.append(self._env_fallback.to_dict())
-            return items
+            return [a.to_dict() for a in self._accounts]
 
     def count(self) -> int:
         with self._lock:
@@ -395,17 +334,10 @@ class AccountPool:
     def acquire(self) -> Optional[Account]:
         """Get the next idle account (round-robin), or None if all busy.
 
-        When the pool has no accounts at all, falls back to the .env
-        credentials (read-only fallback) so the service keeps working
-        until panel accounts are added.
+        Returns None when no configured account is idle.
         """
         with self._lock:
             if not self._accounts:
-                fb = self._env_fallback
-                if fb is not None and fb.state == "idle":
-                    fb.state = "busy"
-                    fb.last_used = time.time()
-                    return fb
                 return None
             n = len(self._accounts)
             for _ in range(n):
@@ -429,8 +361,6 @@ class AccountPool:
             return None
         with self._lock:
             candidates = self._accounts
-            if not candidates and self._env_fallback is not None:
-                candidates = [self._env_fallback]
             for acct in candidates:
                 if acct.id == account_id and acct.state == "idle":
                     acct.state = "busy"
@@ -529,9 +459,7 @@ class AccountPool:
 
     def stats(self) -> dict:
         with self._lock:
-            accounts = list(self._accounts)
-            if self._env_fallback is not None:
-                accounts.append(self._env_fallback)
+            accounts = self._accounts
             total = len(accounts)
             idle = sum(1 for a in accounts if a.state == "idle")
             busy = sum(1 for a in accounts if a.state == "busy")

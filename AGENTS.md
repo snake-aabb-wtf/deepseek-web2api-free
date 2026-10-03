@@ -2,6 +2,12 @@
 
 > 本文档面向后续维护本项目的 AI 智能体，完整阐述项目的实现原理、协议细节、代码架构和已知问题。**请先全文阅读本文档再开始任何修改**。
 
+## 当前账号配置规则
+
+- 账号凭证只通过 WebUI 账号池或 `data/accounts.json` 配置；WebUI 的修改会持久化到该 JSON 文件。
+- `.env` 中的 `DEEPSEEK_TOKEN`、`DEEPSEEK_COOKIES`、`DEEPSEEK_EMAIL`、`DEEPSEEK_PROXY` 及编号形式不再读取；池空时不会使用环境变量兜底。
+- 以下版本记录保留当时的实现历史；其中曾描述的 `.env` 账号兜底已经移除。
+
 ---
 
 ## v3.3.4（2026-09-10）：Anthropic 非流式错误映射
@@ -231,7 +237,7 @@ pip install -r requirements.txt
 
 # 3. 配置凭证（从浏览器 DevTools 获取）
 copy .env.example .env
-# 编辑 .env: 填入 DEEPSEEK_TOKEN 和 DEEPSEEK_COOKIES
+# 在 WebUI「账号池」添加账号，或写入 data/accounts.json；账号凭证不放入 .env
 
 # 4. 启动服务
 python server.py
@@ -1076,7 +1082,7 @@ DeepSeek Chat 网页版支持上传文件（如图片、PDF），上传后文件
 | `User-Agent` / `Sec-Ch-Ua` / `Sec-Ch-Ua-Mobile` / `Sec-Ch-Ua-Platform` | Chrome 指纹（`DEEPSEEK_IMPERSONATE` 关联 curl_cffi 指纹） |
 | `Accept` / `Accept-Encoding` / `Accept-Language` | 浏览器风格（`gzip, deflate, br, zstd` / `zh-CN,...`） |
 | `Content-Type` | `application/json` |
-| `Authorization` | `Bearer <DEEPSEEK_TOKEN>`（账号凭证） |
+| `Authorization` | `Bearer <DeepSeek token>`（账号凭证） |
 | `Origin` / `Referer` | `https://chat.deepseek.com/` |
 | `Priority` | `u=1, i` |
 | `Sec-Fetch-Dest` / `Sec-Fetch-Mode` / `Sec-Fetch-Site` | `empty` / `cors` / `same-origin` |
@@ -1741,8 +1747,6 @@ class ContentPart(BaseModel):
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DEEPSEEK_TOKEN` | — | Authorization Bearer Token |
-| `DEEPSEEK_COOKIES` | — | Cookie 字符串 |
 | `MODEL_NAME` | `deepseek-chat` | 响应中的模型名（不影响实际转发） |
 | `PORT` | `8080` | 服务器监听端口 |
 | `MODE` | `auto` | 模式控制：`auto`/`quick`/`expert` |
@@ -1769,10 +1773,6 @@ class ContentPart(BaseModel):
 | `CLIENT_RPM_PER_IP` | `120` | 每 IP 每分钟请求数(0=不限) | ⭐限流 |
 | `ENABLE_RATE_LIMIT` | `true` | 限流总开关 | |
 | `SESSION_CACHE_TTL` | `1800` | 多轮会话缓存秒数，0=禁多轮 | ⭐多轮 |
-| `DEEPSEEK_TOKEN` / `_N` | `""` | DeepSeek 账号凭证(token)，`_1`为多账号 | ⭐兜底账号 |
-| `DEEPSEEK_COOKIES` / `_N` | `""` | DeepSeek 账号 Cookie | ⭐兜底账号 |
-| `DEEPSEEK_EMAIL_N` | `env-N` | 多账号标识 | |
-| `DEEPSEEK_PROXY` / `_N` | `""` | 每账号上游代理 URL | ⭐反检测 |
 | `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi TLS 指纹 profile | |
 | `DEEPSEEK_JITTER_SECS` | `0.4` | 调用前随机 sleep 秒数 | |
 | `DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` | `5,15` | 上游限流退避秒数列，空=禁重试 | |
@@ -1786,7 +1786,7 @@ class ContentPart(BaseModel):
 
 **给自动化/代理工具的配置 checklist（按顺序）：**
 1. 在 WebUI「设置」页创建客户端 API Key（否则 `/v1/*` 报 503）→ Bearer/x-api-key 鉴权；旧版 `API_KEYS` / `DEEPSEEK_API_KEY` 仅首次初始化时导入
-2. 账号池：多账号→写 `data/accounts.json`；单兜底→`.env` 的 `DEEPSEEK_TOKEN_1/COOKIES_1`
+2. 账号池：通过 WebUI 添加账号，或写入 `data/accounts.json`；`.env` 不配置账号凭证
 3. 公网→`HOST=127.0.0.1`+反代+`TRUSTED_PROXIES`；或 `HOST=0.0.0.0`+自己上 TLS/WAF
 4. 限流默认够用；多 worker(gunicorn -w N) 实际限流=N×配置值
 5. 改 `.env` 必须**重启进程**才生效（load_dotenv 只在模块加载时调用一次）
@@ -1842,12 +1842,10 @@ class ContentPart(BaseModel):
 from dotenv import load_dotenv
 load_dotenv()
 
-TOKEN = os.environ.get("DEEPSEEK_TOKEN", "")
-COOKIES = os.environ.get("DEEPSEEK_COOKIES", "")
 MODEL_NAME = os.environ.get("MODEL_NAME", "deepseek-chat")
 ```
 
-同时 `adapter.py` 和 `server.py` 各自调用 `load_dotenv()`（dotenv 保证只加载一次）。
+账号凭证由 `AccountPool` 从 `data/accounts.json` 加载，或通过 WebUI 管理；`adapter.py` 构造时必须显式传入凭证。`adapter.py` 和 `server.py` 仍调用 `load_dotenv()` 读取其他运行配置。
 
 ### 13.3 Token 和 Cookie 获取
 
@@ -1990,19 +1988,16 @@ def check_health(acct) -> bool:
 
 `AccountPool` 使用 `threading.Lock` 保护所有状态变更操作（CRUD、状态切换）。`_WASMSolver` 已有独立锁，两把锁不会形成死锁（无嵌套加锁）。
 
-### 15.7 初始加载与 env 兜底
+### 15.7 初始加载与配置来源
 
-- **池内账号**：启动时从 `data/accounts.json`（面板持久化）加载；面板/Admin API 增删改。
-- **env 兜底**：`.env` 中的凭证（numbered `DEEPSEEK_TOKEN_1/...` 优先，legacy `DEEPSEEK_TOKEN`/`DEEPSEEK_COOKIES` 其次）**不再预加载进池**，而是作为只读兜底账号（id=`env-*`，source=`env`，`read_only=true`）：
-  - 池内**有**账号时：只用池内账号（面板账号优先）
-  - 池内**0**个账号时：`acquire()` 返回 env 兜底账号，服务不因池空而 503
-  - webui 账号池页显示该条目（灰色只读），删除接口对 `env-*` 无效（不在池内，返回 404）
-  - 实现：`AccountPool._env_fallback`（`_load_env_fallback()`），`acquire()` 池空分支、`get_all()`/`stats()` 含兜底账号
+- **唯一账号来源**：启动时从 `data/accounts.json` 加载；WebUI/Admin API 的增删改也持久化到该文件。
+- `.env` 不加载账号凭证；`DeepSeekAdapter` 要求调用方显式传入 token 和 cookies。
+- 账号池为空时 `acquire()` 返回 `None`，请求无法选择上游账号；需先在 WebUI 添加账号或填充 `data/accounts.json`。
 
 ### 15.8 非交互式账号池配置（代理 / 自动化工具专用）
 
 > **场景**：给 SDK、脚本、curl、CI、代理等**不经过 WebUI 面板**的自动化工具配置多账号轮询。
-> **要点**：v3.0.0+ 账号池的**主配置源是 `data/accounts.json` 文件**，不是 `.env`。`.env` 只提供「单账号只读兜底」。要跑**多账号轮询**，非交互场景必须直接写 `data/accounts.json`。
+> **要点**：账号凭证只通过 WebUI 账号池或 `data/accounts.json` 配置。`.env` 不提供账号兜底；非交互部署直接维护 `data/accounts.json`。
 
 **`data/accounts.json` 完整 schema（v1 明文版）：**
 
@@ -2058,7 +2053,6 @@ python -m uvicorn server:app --host 127.0.0.1 --port 8080
 
 - **加密存储（推荐公网）**：设 `DEEPSEEK_ENCRYPTION_KEY`(Fernet 32B base64)，首次启动会把 `version:1` 明文自动迁移为 `version:2` 加密，并留 `accounts.json.v1.bak`。此时**不要再手写明文文件**（会被 detect_store_version 判成 v2 encrypted 又无 key 而拒绝加载）。
 - **写入时机**：在服务**启动前**写文件，或运行中调 `POST /admin/api/accounts`(需 admin token)。服务启动时 `_load_persisted_accounts()` 一次性全量加载。
-- **只保留一个兜底账号**：直接用 `.env` 的 `DEEPSEEK_TOKEN_1/COOKIES_1`（或 legacy `DEEPSEEK_TOKEN/COOKIES`），池空自动兜底，不必写 accounts.json。
 
 ---
 
@@ -2299,7 +2293,7 @@ yield "data: [DONE]\n\n"
 ### 18.1 认证相关
 
 - **Token/Cookie 过期**：不定期失效，需重新获取。没有自动续期机制（webui 账号池提供一键重登录）。
-- **账号来源**：`.env` 静态账号（`DEEPSEEK_TOKEN_n`/`DEEPSEEK_COOKIES_n` 或 legacy `DEEPSEEK_TOKEN`）与 webui 面板账号（`data/accounts.json`）双通道，账号池轮询分配。
+- **账号来源**：仅由 WebUI/Admin API 管理并持久化到 `data/accounts.json`，或直接维护该文件；`.env` 不加载账号凭证。
 - **两套鉴权**：`/v1/*` 客户端用 WebUI「设置」页管理的 API Key（Bearer 或 `x-api-key`，SQLite 仅存哈希）；webui 管理端用 `DEEPSEEK_ADMIN_PASSWORD` 换 admin 会话 token。旧版 `API_KEYS` / `DEEPSEEK_API_KEY` 仅首次创建 Key 数据库时导入。
 - **admin token 放行 `/v1/*`**（v2.2.0+ 行为）：`_check_api_auth` 先验证 `verify_admin_token()`，有效则放行——webui 用同一 token 调模型列表/Playground。持有 admin token 者本已能完全控制账号池，不扩大风险面。
 - **登录节流**：每 IP 5 次失败 / 300s 窗口，超限返回 429；计数为进程内存态，重启清零。

@@ -38,10 +38,8 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {accounts.map((a) => {
-          const readOnly = a.read_only
-          return (
-            <TableRow
+        {accounts.map((a) => (
+          <TableRow
               key={a.id}
               className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => onSelect(a)}
@@ -66,7 +64,7 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                 </Tooltip>
               </TableCell>
               <TableCell>
-                <Badge variant={a.source === 'env' ? 'env' : 'secondary'}>{a.source}</Badge>
+                <Badge variant="secondary">持久化</Badge>
               </TableCell>
               <TableCell>
                 <StateBadge state={a.state} />
@@ -110,45 +108,38 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {a.state === 'error' && <ReloginButton accountId={a.id} />}
-                  {readOnly ? (
-                    <span className="text-xs text-muted-foreground px-2">env 只读</span>
-                  ) : (
-                    <>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onEdit(a)}
-                            aria-label="编辑"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>编辑</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => onDelete(a)}
-                            aria-label="删除"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>删除</TooltipContent>
-                      </Tooltip>
-                    </>
-                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => onEdit(a)}
+                        aria-label="编辑"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>编辑</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => onDelete(a)}
+                        aria-label="删除"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>删除</TooltipContent>
+                  </Tooltip>
                 </div>
               </TableCell>
-            </TableRow>
-          )
-        })}
+          </TableRow>
+        ))}
       </TableBody>
     </Table>
   )

@@ -106,7 +106,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       </div>
       {!isEdit && (
         <p className="text-xs text-muted-foreground">
-          .env 中的账号（DEEPSEEK_TOKEN_1/2/...）会显示为只读；只能编辑 .env 后重启服务。
+          新增账号会持久化到 data/accounts.json。
         </p>
       )}
     </div>

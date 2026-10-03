@@ -59,10 +59,10 @@ pip install -r requirements.txt
 
 | 凭证 | 位置 | 示例 |
 |------|------|------|
-| `DEEPSEEK_TOKEN` | `Authorization` 请求头的 Bearer 值 | `eyJhbGciOiJIUzI1NiIs...` |
-| `DEEPSEEK_COOKIES` | `Cookie` 请求头的完整值 | `cf_clearance=xxx; session=yyy; ...` |
+| Token | `Authorization` 请求头 `Bearer` 后的值 | 从请求头复制 |
+| Cookies | `Cookie` 请求头的完整值 | 从请求头复制 |
 
-> **两种使用方式**：① 填入 `.env` 作为池空兜底；② 直接登录 WebUI 在「账号池」页添加（推荐，可增删改 + 一键重登录）。
+> 将凭证添加到 WebUI「账号池」，或写入 `data/accounts.json`。账号凭证不再从 `.env` 读取。
 
 ### 配置
 
@@ -81,12 +81,7 @@ ALLOW_UNAUTHENTICATED_API=false
 # 必填：WebUI 管理面板密码（未设置默认 admin，公网部署前必须修改）
 DEEPSEEK_ADMIN_PASSWORD=change-me
 
-# 可选：DeepSeek 账号凭证（v3.2.0 起为「池空兜底」）
-# 不再预加载进账号池参与轮询；仅当面板账号数为 0 时作为只读兜底使用。
-# 推荐：直接登录 WebUI 在「账号池」页面添加账号（持久化到 data/accounts.json，可增删改）。
-DEEPSEEK_TOKEN=eyJhbGciOiJIUzI1NiIs...
-DEEPSEEK_COOKIES=cf_clearance=xxx; session=yyy; ...
-# 多账号格式同理（DEEPSEEK_TOKEN_1/COOKIES_1/EMAIL_1，取第一个有效作为兜底）
+# DeepSeek 账号只通过 WebUI「账号池」或 data/accounts.json 配置。
 
 # 可选：模型路由（默认已启用——Playground 显示快速/专家两种模式）
 MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
@@ -155,10 +150,10 @@ curl http://localhost:8080/v1/models \
 
 默认密码为 `.env` 中设置的 `DEEPSEEK_ADMIN_PASSWORD`（未设置则为 `admin`）。公网部署前请务必修改默认密码。
 
-账号池支持两类账号：
+账号只从 `data/accounts.json` 加载。WebUI 账号池中的增删改操作会写入该文件；也可以直接维护该 JSON 文件。
 
-- **面板账号（推荐）**：在 WebUI 账号池页添加/编辑/删除，持久化到 `data/accounts.json`，参与轮询分配，可一键重登录。
-- **env 兜底（v3.2.0+）**：`.env` 中 `DEEPSEEK_TOKEN/COOKIES`（或 `_1` 多账号格式）作为**只读兜底**——不参与常规轮询，仅当面板账号数为 0 时自动启用，保证池空不 503。
+WebUI 其他功能包括：
+
 - **概览** — 实时请求统计（总量/成功/失败/延迟/运行时长）+ 账号池状态一览
 - **Playground** — 在线测试对话（快速/专家两种模型模式，支持推理过程可视化）
 - **设置** — 只读查看当前生效的运行时配置
@@ -167,7 +162,7 @@ curl http://localhost:8080/v1/models \
 
 ## 非交互式账号池配置（代理 / 自动化工具）
 
-> **给 SDK、脚本、curl、CI、代理用**，不经过 WebUI 面板。要点：v3.0.0+ 账号池的**主配置源是 `data/accounts.json` 文件**，`.env` 只提供单账号只读兜底。要跑**多账号轮询**，非交互场景必须写 `data/accounts.json`。
+> **给 SDK、脚本、curl、CI、代理用**，不经过 WebUI 面板。账号凭证统一存储在 `data/accounts.json`；`.env` 不读取账号凭证。非交互场景直接维护该文件即可。
 
 **`data/accounts.json`（v1 明文）完整格式：**
 
@@ -202,7 +197,6 @@ chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
 
-- **单账号兜底**（不写文件）：直接在 `.env` 设 `DEEPSEEK_TOKEN_1`/`DEEPSEEK_COOKIES_1`（或 legacy `DEEPSEEK_TOKEN`/`DEEPSEEK_COOKIES`），池空自动兜底。
 - **改存储路径**：`ACCOUNT_STORE_PATH` 环境变量。
 
 ---
@@ -715,7 +709,7 @@ Retry-After: 47
 
 原因通常是凭证失效或网络问题：
 
-1. 检查 `.env` 中的 `DEEPSEEK_TOKEN` 和 `DEEPSEEK_COOKIES` 是否仍然有效（登录 chat.deepseek.com 重新提取）
+1. 在 WebUI「账号池」检查账号凭证状态；非交互部署则检查 `data/accounts.json` 中的凭证是否仍然有效
 2. 检查能否访问 `chat.deepseek.com`（可能需要代理）
 3. 检查控制台日志中的具体错误信息
 
@@ -802,15 +796,10 @@ DeepSeek 的 Token 有效期不明确。如果遇到 `401` 或 `403` 响应，�
 
 客户端 API Key 在 WebUI「设置」页管理，SQLite 文件中只保存哈希。旧版 `.env` 的 `API_KEYS` / `DEEPSEEK_API_KEY` 仅在首次创建 Key 数据库时导入一次；确认客户端已可用后，可从 `.env` 删除旧配置。
 
-### DeepSeek 账号
+### 账号池存储
 
 | 变量 | 默认值 | 必填 | 说明 |
 |------|--------|------|------|
-| `DEEPSEEK_TOKEN` | `""` | 有 DeepSeek 账号时必填 | DeepSeek API 的 Bearer Token（单账号兼容格式） |
-| `DEEPSEEK_COOKIES` | `""` | 有 DeepSeek 账号时必填 | DeepSeek 的 Cookie 值（单账号兼容格式） |
-| `DEEPSEEK_TOKEN_N` | `""` | 否 | 第 N 个 DeepSeek 账号 Token，例如 `DEEPSEEK_TOKEN_1` |
-| `DEEPSEEK_COOKIES_N` | `""` | 否 | 第 N 个 DeepSeek 账号 Cookies |
-| `DEEPSEEK_EMAIL_N` | `"env-N"` | 否 | 第 N 个账号的备注/标识 |
 | `ACCOUNT_STORE_PATH` | `data/accounts.json` | 否 | 面板持久化账号保存路径 |
 
 ### 模型行为
@@ -857,13 +846,6 @@ DeepSeek 的 Token 有效期不明确。如果遇到 `401` 或 `403` 响应，�
 | `DEEPSEEK_JITTER_SECS` | `0.0` | 调用间随机抖动（秒） |
 | `DSML_MAX_BUFFER_BYTES` | `1048576` | StreamSieve 捕获缓冲上限 |
 | `DISABLE_AUTO_RECOVER` | `false` | 设为 true 禁用账号自动恢复 |
-
-### 反检测 — 每个账号的代理
-
-| 变量 | 说明 |
-|------|------|
-| `DEEPSEEK_PROXY` / `DEEPSEEK_PROXY_N` | 单个 / 第 N 个账号的上游代理 URL |
-| `DEEPSEEK_EMAIL` | 旧版单账号格式的邮箱备注 |
 
 ---
 

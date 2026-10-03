@@ -184,7 +184,7 @@ start_sampler(get_stats())
 if pool.count() == 0:
     log.warning(
         "no_accounts_in_pool",
-        extra={"hint": "Set DEEPSEEK_TOKEN and DEEPSEEK_COOKIES in .env"},
+        extra={"hint": "Add an account in the WebUI or data/accounts.json"},
     )
 
 

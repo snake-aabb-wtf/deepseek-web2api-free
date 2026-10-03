@@ -33,9 +33,7 @@ from logger import get_logger
 load_dotenv()
 log = get_logger("adapter")
 
-COOKIES = os.environ.get("DEEPSEEK_COOKIES", "")
 BASE_URL = "https://chat.deepseek.com"
-TOKEN = os.environ.get("DEEPSEEK_TOKEN", "")
 IMPERSONATE = os.environ.get("DEEPSEEK_IMPERSONATE", "chrome131")
 try:
     JITTER_SECS = max(0.0, float(os.environ.get("DEEPSEEK_JITTER_SECS", "0.4") or 0))
@@ -275,7 +273,7 @@ class DeepSeekAdapter:
         '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
     )
 
-    def __init__(self, token: str = TOKEN, cookies: str = COOKIES,
+    def __init__(self, token: str, cookies: str,
                  impersonate: str = IMPERSONATE, proxy: str | None = None):
         self.token = self._normalize_token(token)
         self.cookies = cookies

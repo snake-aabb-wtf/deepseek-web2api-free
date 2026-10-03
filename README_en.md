@@ -59,10 +59,10 @@ You need to extract your DeepSeek credentials from the browser developer tools:
 
 | Credential | Location | Example |
 |------|------|------|
-| `DEEPSEEK_TOKEN` | Bearer value of the `Authorization` header | `eyJhbGciOiJIUzI1NiIs...` |
-| `DEEPSEEK_COOKIES` | Full value of the `Cookie` header | `cf_clearance=xxx; session=yyy; ...` |
+| Token | Value after `Bearer` in the `Authorization` header | Copy from the request headers |
+| Cookies | Full value of the `Cookie` header | Copy from the request headers |
 
-> **Two usage modes**: ① fill them into `.env` as the pool-empty fallback; ② log into the WebUI and add them on the "Account Pool" page (recommended — supports CRUD + one-click re-login).
+> Add credentials on the WebUI "Account Pool" page or store them in `data/accounts.json`. Account credentials are no longer read from `.env`.
 
 ### Configuration
 
@@ -81,12 +81,7 @@ ALLOW_UNAUTHENTICATED_API=false
 # Required: WebUI admin panel password (defaults to "admin" if unset; MUST change before public deployment)
 DEEPSEEK_ADMIN_PASSWORD=***
 
-# Optional: DeepSeek account credentials (fallback when pool is empty since v3.2.0)
-# No longer preloaded into the pool for round-robin; only used as a read-only fallback when the panel has 0 accounts.
-# Recommended: log into the WebUI and add accounts on the "Account Pool" page (persisted to data/accounts.json, CRUD supported).
-DEEPSEEK_TOKEN=eyJhbG…
-DEEPSEEK_COOKIES=cf_clearance=xxx; session=yyy; ...
-# Multi-account format is the same (DEEPSEEK_TOKEN_1/COOKIES_1/EMAIL_1, first valid one used as fallback)
+# DeepSeek accounts are configured only in WebUI > Account Pool or data/accounts.json.
 
 # Optional: model routing (enabled by default — Playground shows quick/expert modes)
 MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
@@ -155,10 +150,10 @@ Open in browser: http://localhost:8080/webui/
 
 Default password is `DEEPSEEK_ADMIN_PASSWORD` set in `.env` (defaults to `admin` if unset). Be sure to change the default password before public deployment.
 
-The account pool supports two kinds of accounts:
+Accounts are loaded only from `data/accounts.json`. Changes made in the WebUI Account Pool page are saved to this file; you can also maintain the JSON file directly.
 
-- **Panel accounts (recommended)**: add/edit/delete on the WebUI Account Pool page, persisted to `data/accounts.json`, participate in round-robin allocation, one-click re-login.
-- **env fallback (v3.2.0+)**: `DEEPSEEK_TOKEN/COOKIES` (or the `_1` multi-account format) in `.env` act as a **read-only fallback** — not part of normal round-robin; only auto-enabled when the panel has 0 accounts, ensuring the pool is never 503.
+Other WebUI features include:
+
 - **Overview** — live request statistics (total/success/failure/latency/uptime) + account pool status overview.
 - **Playground** — online test chat (quick/expert model modes, supports reasoning process visualization).
 - **Settings** — read-only view of the currently effective runtime configuration.
@@ -166,7 +161,7 @@ The account pool supports two kinds of accounts:
 
 ## Non-interactive Account Pool Configuration (for proxies / automation)
 
-> For SDKs, scripts, curl, CI, and proxies that do **not** go through the WebUI panel. Key point: since v3.0.0 the account pool's **primary config source is the `data/accounts.json` file**; `.env` only provides a single-account read-only fallback. For **multi-account round-robin**, non-interactive setups must write `data/accounts.json`.
+> For SDKs, scripts, curl, CI, and proxies that do **not** go through the WebUI panel. Account credentials are stored only in `data/accounts.json`; `.env` does not load account credentials. Maintain this file directly for non-interactive setups.
 
 **Full `data/accounts.json` format (v1 plaintext):**
 
@@ -201,7 +196,6 @@ chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
 
-- **Single-account fallback** (no file needed): set `DEEPSEEK_TOKEN_1`/`DEEPSEEK_COOKIES_1` in `.env` (or legacy `DEEPSEEK_TOKEN`/`DEEPSEEK_COOKIES`), used automatically when the pool is empty.
 - **Change the store path**: `ACCOUNT_STORE_PATH` environment variable.
 
 ---
@@ -712,7 +706,7 @@ Before deploying to the public internet, check in order:
 
 Usually invalid credentials or a network issue:
 
-1. Check that `DEEPSEEK_TOKEN` and `DEEPSEEK_COOKIES` in `.env` are still valid (re-extract by logging into chat.deepseek.com).
+1. Check the account status in WebUI > Account Pool; for non-interactive deployments, verify the credentials in `data/accounts.json` are still valid.
 2. Check that `chat.deepseek.com` is reachable (may need a proxy).
 3. Check the specific error in the console logs.
 
@@ -799,15 +793,10 @@ DeepSeek's token validity is unclear. If you encounter `401` or `403` responses,
 
 Client API keys are managed in WebUI > Settings, and only hashes are stored in SQLite. Legacy `.env` values from `API_KEYS` / `DEEPSEEK_API_KEY` are imported once when the key database is first created; remove the old entries from `.env` after confirming clients still work.
 
-### DeepSeek accounts
+### Account pool storage
 
 | Variable | Default | Required | Description |
 |------|--------|------|------|
-| `DEEPSEEK_TOKEN` | `""` | required if using an account | DeepSeek API Bearer token (single-account format) |
-| `DEEPSEEK_COOKIES` | `""` | required if using an account | DeepSeek cookie value (single-account format) |
-| `DEEPSEEK_TOKEN_N` | `""` | no | Nth DeepSeek account token, e.g. `DEEPSEEK_TOKEN_1` |
-| `DEEPSEEK_COOKIES_N` | `""` | no | Nth DeepSeek account cookies |
-| `DEEPSEEK_EMAIL_N` | `"env-N"` | no | Nth account remark/identifier |
 | `ACCOUNT_STORE_PATH` | `data/accounts.json` | no | panel-persisted account save path |
 
 ### Model behavior
@@ -854,13 +843,6 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 | `DEEPSEEK_JITTER_SECS` | `0.0` | random jitter between calls (seconds) |
 | `DSML_MAX_BUFFER_BYTES` | `1048576` | StreamSieve capture buffer cap |
 | `DISABLE_AUTO_RECOVER` | `false` | set true to disable account auto-recovery |
-
-### Anti-detection — per-account proxy
-
-| Variable | Description |
-|------|------|
-| `DEEPSEEK_PROXY` / `DEEPSEEK_PROXY_N` | upstream proxy URL for a single / the Nth account |
-| `DEEPSEEK_EMAIL` | legacy single-account email remark |
 
 ---
 

@@ -331,7 +331,7 @@ async def env_info(request: Request):
 
     Powers the React "Settings" page. Intentionally hides secret values
     (only "set / default" indicators for credentials) so a logged-in
-    admin cannot exfiltrate the DeepSeek token via this endpoint.
+    admin cannot expose secret values through this endpoint.
     """
     _check_auth(request)
     pool = _pool
@@ -356,8 +356,6 @@ async def env_info(request: Request):
         "admin_password_set": bool(admin_pwd),
         "admin_password_weak": admin_pwd in {"", "admin", "password", "123456", "changeme"},
         "accounts_total": pool.count(),
-        "accounts_source_env": sum(1 for a in pool.get_all() if a.get("source") == "env"),
-        "accounts_source_file": sum(1 for a in pool.get_all() if a.get("source") == "file"),
         "crypto": {
             "enabled": crypto_on,
             "fernet_configured": bool(_resolve_key()),

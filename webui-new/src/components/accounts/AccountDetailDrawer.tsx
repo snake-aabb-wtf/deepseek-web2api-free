@@ -44,7 +44,7 @@ export function AccountDetailDrawer({ account, onClose, onRelogin }: Props) {
                 <span className="flex items-center gap-2">
                   <StateBadge state={account.state} />
                   <span className="text-xs text-muted-foreground">·</span>
-                  <span className="text-xs">{account.source === 'env' ? 'env 只读' : '持久化'}</span>
+                  <span className="text-xs">持久化</span>
                 </span>
               </SheetDescription>
             </SheetHeader>
@@ -54,9 +54,8 @@ export function AccountDetailDrawer({ account, onClose, onRelogin }: Props) {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">身份</h3>
                 <DetailRow label="ID" value={account.id} mono copyable />
                 <DetailRow label="标识" value={account.email || '—'} />
-                <DetailRow label="来源" value={account.source} />
+                <DetailRow label="来源" value="data/accounts.json" />
                 <DetailRow label="状态" value={account.state} />
-                <DetailRow label="可编辑" value={account.read_only ? '否（只读）' : '是'} />
               </section>
 
               <Separator />
