@@ -16,6 +16,24 @@ echo    HOST=%HOST%    PORT=%PORT%
 echo ==================================================
 echo.
 
+if not exist ".env" (
+    if not exist ".env.example" (
+        echo [错误] 未找到 .env 或 .env.example，无法创建配置文件。
+        pause
+        exit /b 1
+    )
+    copy /Y ".env.example" ".env" >nul 2>&1
+    if errorlevel 1 (
+        echo [错误] 无法从 .env.example 复制创建 .env，请检查目录写入权限。
+        pause
+        exit /b 1
+    )
+    echo [配置] 未找到 .env，已从 .env.example 复制创建。
+) else (
+    echo [配置] 已检测到 .env，保留现有配置。
+)
+echo.
+
 :: ============================================================
 ::  1. 定位系统 Python（需 3.10+）
 :: ============================================================
