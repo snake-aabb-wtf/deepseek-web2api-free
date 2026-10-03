@@ -49,7 +49,7 @@ export function MessageList({ messages, streaming }: Props) {
         <CardContent className="text-center text-sm text-muted-foreground py-12">
           <Bot className="mx-auto h-8 w-8 mb-2 opacity-40 text-primary" />
           <p>在左侧输入消息并点击"发送"</p>
-          <p className="mt-1 text-xs">需要 .env 中配置 <code className="font-mono">API_KEYS</code></p>
+          <p className="mt-1 text-xs">客户端 API Key 可在设置页创建</p>
         </CardContent>
       </Card>
     )

@@ -74,8 +74,8 @@ cp .env.example .env
 编辑 `.env` 文件：
 
 ```ini
-# 必填：客户端 API Key，用于保护 /v1/* 公网接口
-API_KEYS=sk-change-me
+# 客户端 API Key 在 WebUI「设置」页创建和撤销
+# 完整 Key 仅在创建时显示；服务端仅保存哈希
 ALLOW_UNAUTHENTICATED_API=false
 
 # 必填：WebUI 管理面板密码（未设置默认 admin，公网部署前必须修改）
@@ -196,7 +196,7 @@ JSON
 chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
 
 # 2. 配 API 鉴权（非交互必需，否则 /v1/* → 503）
-#    API_KEYS=***    （多个逗号分隔）
+#    首次启动后登录 WebUI，在「设置」页创建 API Key
 
 # 3. 启动
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
@@ -588,7 +588,7 @@ Retry-After: 47
 
 1. **修改默认 admin 密码**：`.env` 中 `DEEPSEEK_ADMIN_PASSWORD=…`（16+ 字符随机）。默认密码 + 公网绑定时服务**会拒绝启动**。
 2. **设置 Fernet 加密 key**：`DEEPSEEK_ENCRYPTION_KEY=…`，生成方式 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`。已有明文 `data/accounts.json` 会在首次启动时自动迁移，原始文件保留为 `accounts.json.v1.bak`。
-3. **设置 API key**：`.env` 中 `API_KEYS=sk-real-key-1,sk-real-key-2`（多个用逗号分隔）。`ALLOW_UNAUTHENTICATED_API` 保持 `false`。
+3. **设置 API key**：登录 WebUI，在「设置」页创建客户端 Key，并将创建时显示的完整值保存到调用方。Key 哈希保存在 `data/api_keys.sqlite3`；`ALLOW_UNAUTHENTICATED_API` 保持 `false`。
 4. **配置 CORS 白名单**：`ALLOWED_ORIGINS=https://app.example.com`，而不是依赖默认同源策略。
 5. **如果用反向代理**（nginx、Caddy、Traefik）：设置 `TRUSTED_PROXIES=10.0.0.0/8`（你的代理网段）让 admin 限流能正确识别客户端 IP。
 6. **绑定地址**：默认 `127.0.0.1`。如果要走反向代理，保持 loopback；如果直连公网，设置 `HOST=0.0.0.0` 并确保前置有 TLS + WAF。
@@ -797,10 +797,10 @@ DeepSeek 的 Token 有效期不明确。如果遇到 `401` 或 `403` 响应，�
 |------|--------|------|------|
 | `HOST` | `127.0.0.1` | 否 | 监听地址。`0.0.0.0` 配合默认 admin 密码时拒绝启动 |
 | `PORT` | `8080` | 否 | 服务器监听端口 |
-| `API_KEYS` | `""` | 公网部署必填 | 客户端访问 `/v1/*` 的 API Key，支持逗号分隔多个 key |
-| `DEEPSEEK_API_KEY` | `""` | 否 | 单个客户端 API Key 别名 |
 | `ALLOW_UNAUTHENTICATED_API` | `false` | 否 | 是否允许 `/v1/*` 无鉴权访问；公网部署不要开启 |
 | `ALLOW_INSECURE_PUBLIC_DEFAULTS` | `false` | 否 | 显式确认在公网上使用默认密码（不建议） |
+
+客户端 API Key 在 WebUI「设置」页管理，SQLite 文件中只保存哈希。旧版 `.env` 的 `API_KEYS` / `DEEPSEEK_API_KEY` 仅在首次创建 Key 数据库时导入一次；确认客户端已可用后，可从 `.env` 删除旧配置。
 
 ### DeepSeek 账号
 

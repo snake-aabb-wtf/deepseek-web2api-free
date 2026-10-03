@@ -26,7 +26,7 @@ export function ModelSelector({ value, onChange, labels }: Props) {
   if (error) {
     return (
       <div className="text-xs text-destructive">
-        无法加载模型列表（需要先在 <code className="font-mono">.env</code> 设置 <code className="font-mono">API_KEYS</code>）:{' '}
+        无法加载模型列表：{' '}
         {error instanceof ApiCallError ? error.message : String(error)}
       </div>
     )

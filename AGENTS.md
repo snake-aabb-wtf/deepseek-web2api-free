@@ -1756,8 +1756,7 @@ class ContentPart(BaseModel):
 
 | 变量 | 默认值 | 用途 | 非交互关键度 |
 |------|--------|------|------|
-| `API_KEYS` | `""` | `/v1/*` 客户端鉴权，逗号分隔多 key | ⭐必配(公网) |
-| `DEEPSEEK_API_KEY` | `""` | 单 key 别名，与 `API_KEYS` 等价 | 可选 |
+| 客户端 API Key | — | WebUI「设置」页创建和撤销；哈希存入 `data/api_keys.sqlite3` | ⭐必配(公网) |
 | `ALLOW_UNAUTHENTICATED_API` | `false` | 是否允许 /v1/* 无鉴权 | 仅本地开发 |
 | `HOST` | `127.0.0.1` | 监听地址；`0.0.0.0`+默认密码拒绝启动 | ⭐反代需关注 |
 | `PORT` | `8080` | 监听端口 | |
@@ -1786,7 +1785,7 @@ class ContentPart(BaseModel):
 | `DISABLE_AUTO_RECOVER` | `false` | 禁用账号自动恢复 | |
 
 **给自动化/代理工具的配置 checklist（按顺序）：**
-1. `API_KEYS` 必配（否则 /v1/* 报 503）→ Bearer/x-api-key 鉴权
+1. 在 WebUI「设置」页创建客户端 API Key（否则 `/v1/*` 报 503）→ Bearer/x-api-key 鉴权；旧版 `API_KEYS` / `DEEPSEEK_API_KEY` 仅首次初始化时导入
 2. 账号池：多账号→写 `data/accounts.json`；单兜底→`.env` 的 `DEEPSEEK_TOKEN_1/COOKIES_1`
 3. 公网→`HOST=127.0.0.1`+反代+`TRUSTED_PROXIES`；或 `HOST=0.0.0.0`+自己上 TLS/WAF
 4. 限流默认够用；多 worker(gunicorn -w N) 实际限流=N×配置值
@@ -2050,8 +2049,8 @@ chmod 700 /path/to/project/data
 # 2. 可选：改存储路径（不改则默认 data/accounts.json）
 #    .env 或环境变量设：ACCOUNT_STORE_PATH=/path/to/accounts.json
 
-# 3. 配置 API 鉴权（非交互必须，否则 /v1/* 报 503）
-#    API_KEYS=***   （多个逗号分隔)
+# 3. 在 WebUI「设置」页创建 API Key（非交互必须，否则 /v1/* 报 503）
+#    Key 哈希保存在 data/api_keys.sqlite3；明文仅在创建时显示一次
 
 # 4. 启动
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
@@ -2301,7 +2300,7 @@ yield "data: [DONE]\n\n"
 
 - **Token/Cookie 过期**：不定期失效，需重新获取。没有自动续期机制（webui 账号池提供一键重登录）。
 - **账号来源**：`.env` 静态账号（`DEEPSEEK_TOKEN_n`/`DEEPSEEK_COOKIES_n` 或 legacy `DEEPSEEK_TOKEN`）与 webui 面板账号（`data/accounts.json`）双通道，账号池轮询分配。
-- **两套鉴权**：`/v1/*` 客户端用 `API_KEYS`（Bearer 或 `x-api-key`）；webui 管理端用 `DEEPSEEK_ADMIN_PASSWORD` 换 admin 会话 token。
+- **两套鉴权**：`/v1/*` 客户端用 WebUI「设置」页管理的 API Key（Bearer 或 `x-api-key`，SQLite 仅存哈希）；webui 管理端用 `DEEPSEEK_ADMIN_PASSWORD` 换 admin 会话 token。旧版 `API_KEYS` / `DEEPSEEK_API_KEY` 仅首次创建 Key 数据库时导入。
 - **admin token 放行 `/v1/*`**（v2.2.0+ 行为）：`_check_api_auth` 先验证 `verify_admin_token()`，有效则放行——webui 用同一 token 调模型列表/Playground。持有 admin token 者本已能完全控制账号池，不扩大风险面。
 - **登录节流**：每 IP 5 次失败 / 300s 窗口，超限返回 429；计数为进程内存态，重启清零。
 

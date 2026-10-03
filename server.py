@@ -4,7 +4,6 @@ Supports streaming, tool calling (via DSML prompt injection), content parts, exp
 """
 import json
 import os
-import secrets
 import sys
 import threading
 import time
@@ -57,10 +56,12 @@ from rate_limiter import RateLimiter
 from ip_utils import get_real_client_ip, is_trusted_proxy
 from model_router import ModelRouter
 from session_cache import SessionCache, ChatSession
+from api_key_store import get_api_key_store
 
 load_dotenv()
 configure_from_env()
 log = get_logger("server")
+API_KEY_STORE = get_api_key_store()
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "deepseek-chat")
 MODE = os.environ.get("MODE", "auto").strip().lower()
@@ -76,27 +77,6 @@ ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").spli
 ALLOW_CREDENTIALS = bool(ALLOWED_ORIGINS) and os.environ.get("ALLOW_CORS_CREDENTIALS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _load_api_keys() -> list[str]:
-    keys = []
-    raw_keys = os.environ.get("API_KEYS", "")
-    for item in raw_keys.split(","):
-        item = item.strip()
-        if item:
-            keys.append(item)
-    single_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-    if single_key:
-        keys.append(single_key)
-
-    deduped = []
-    seen = set()
-    for key in keys:
-        if key not in seen:
-            seen.add(key)
-            deduped.append(key)
-    return deduped
-
-
-API_KEYS = _load_api_keys()
 RATE_LIMITER = RateLimiter()
 MODEL_ROUTER = ModelRouter()
 SESSION_CACHE = SessionCache()
@@ -125,11 +105,11 @@ def _check_api_auth(request: Request):
     supplied = _extract_api_key(request)
     if supplied and verify_admin_token(supplied):
         return
-    if not API_KEYS:
+    if not API_KEY_STORE.has_keys():
         raise HTTPException(status_code=503, detail="API key authentication is not configured")
     if not supplied:
         raise HTTPException(status_code=401, detail="Missing API key")
-    if not any(secrets.compare_digest(supplied, key) for key in API_KEYS):
+    if not API_KEY_STORE.verify(supplied):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 

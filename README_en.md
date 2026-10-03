@@ -74,8 +74,8 @@ cp .env.example .env
 Edit the `.env` file:
 
 ```ini
-# Required: client API keys, used to protect /v1/* public endpoints
-API_KEYS=***
+# Create and revoke client API keys in WebUI > Settings.
+# The full key is shown only once; the server stores only its hash.
 ALLOW_UNAUTHENTICATED_API=false
 
 # Required: WebUI admin panel password (defaults to "admin" if unset; MUST change before public deployment)
@@ -195,7 +195,7 @@ JSON
 chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
 
 # 2. Configure API auth (required for non-interactive use, else /v1/* → 503)
-#    API_KEYS=***    (comma-separated for multiple)
+#    After startup, log into the WebUI and create an API key in Settings.
 
 # 3. Start
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
@@ -585,7 +585,7 @@ Before deploying to the public internet, check in order:
 
 1. **Change the default admin password**: `DEEPSEEK_ADMIN_PASSWORD=***` in `.env` (random characters). The service **refuses to start** when using the default password with a public binding.
 2. **Set a Fernet encryption key**: `DEEPSEEK_ENCRYPTION_KEY=***` (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`). Existing plaintext `data/accounts.json` is auto-migrated on first startup; the original is kept as `accounts.json.v1.bak`.
-3. **Set API keys**: `API_KEYS=***,***` in `.env` (comma-separated for multiple). Keep `ALLOW_UNAUTHENTICATED_API` as `false`.
+3. **Set API keys**: log into the WebUI, create a client key on the Settings page, and save its one-time value in your client. Only the key hash is stored in `data/api_keys.sqlite3`; keep `ALLOW_UNAUTHENTICATED_API` as `false`.
 4. **Configure the CORS whitelist**: `ALLOWED_ORIGINS=https://app.example.com`, rather than relying on the default same-origin policy.
 5. **If using a reverse proxy** (nginx, Caddy, Traefik): set `TRUSTED_PROXIES=10.0.0.0/8` (your proxy's CIDR) so admin rate limiting correctly identifies client IPs.
 6. **Bind address**: default `127.0.0.1`. If using a reverse proxy, keep loopback; if exposing directly to the internet, set `HOST=0.0.0.0` and ensure TLS + WAF in front.
@@ -794,10 +794,10 @@ DeepSeek's token validity is unclear. If you encounter `401` or `403` responses,
 |------|--------|------|------|
 | `HOST` | `127.0.0.1` | no | Listen address. `0.0.0.0` refuses to start with default admin password |
 | `PORT` | `8080` | no | Server listen port |
-| `API_KEYS` | `""` | required for public | API keys for client access to `/v1/*`, comma-separated for multiple |
-| `DEEPSEEK_API_KEY` | `""` | no | single client API key alias |
 | `ALLOW_UNAUTHENTICATED_API` | `false` | no | whether to allow unauthenticated `/v1/*` access; do NOT enable for public |
 | `ALLOW_INSECURE_PUBLIC_DEFAULTS` | `false` | no | explicitly confirm using default password on public internet (not recommended) |
+
+Client API keys are managed in WebUI > Settings, and only hashes are stored in SQLite. Legacy `.env` values from `API_KEYS` / `DEEPSEEK_API_KEY` are imported once when the key database is first created; remove the old entries from `.env` after confirming clients still work.
 
 ### DeepSeek accounts
 

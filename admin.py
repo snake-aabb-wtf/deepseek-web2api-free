@@ -7,7 +7,7 @@ import threading
 import time
 from collections import deque
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from account_pool import AccountPool
@@ -15,6 +15,7 @@ from crypto import is_enabled as crypto_is_enabled, _resolve_key
 from ip_utils import get_real_client_ip, is_trusted_proxy
 from logger import get_logger
 from stats_history import get_history, start_sampler
+from api_key_store import get_api_key_store
 
 log = get_logger("admin")
 
@@ -209,6 +210,10 @@ class AccountReloginResponse(BaseModel):
     message: str
 
 
+class ApiKeyCreateRequest(BaseModel):
+    name: str
+
+
 # ── Router ────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/admin/api")
@@ -259,6 +264,30 @@ async def logout(request: Request):
     token = auth.removeprefix("Bearer ").strip()
     if token:
         _tokens.discard(token)
+    return {"ok": True}
+
+
+@router.get("/api-keys")
+async def list_api_keys(request: Request):
+    _check_auth(request)
+    return {"keys": get_api_key_store().list_keys()}
+
+
+@router.post("/api-keys")
+async def create_api_key(req: ApiKeyCreateRequest, request: Request, response: Response):
+    _check_auth(request)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return get_api_key_store().create_key(req.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key(key_id: str, request: Request):
+    _check_auth(request)
+    if not get_api_key_store().revoke_key(key_id):
+        raise HTTPException(status_code=404, detail="API key not found")
     return {"ok": True}
 
 

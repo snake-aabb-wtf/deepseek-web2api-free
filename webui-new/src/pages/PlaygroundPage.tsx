@@ -198,7 +198,7 @@ export default function PlaygroundPage() {
     <div className="space-y-4 animate-fade-in h-full flex flex-col">
       <PageHeader
         title="Playground"
-        description="在线测试 /v1/chat/completions（需要 .env 配置 API_KEYS）"
+        description="在线测试 /v1/chat/completions"
         actions={
           <Button
             variant="outline"
