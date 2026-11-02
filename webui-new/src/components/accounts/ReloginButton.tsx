@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { post, ApiCallError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 import type { ReloginResponse } from '@/lib/types'
+import { t } from '@/lib/i18n'
 
 interface Props {
   accountId: string
@@ -17,14 +18,14 @@ export function ReloginButton({ accountId, onDone }: Props) {
     try {
       const res = await post<ReloginResponse>(`/admin/api/accounts/${encodeURIComponent(accountId)}/relogin`)
       if (res.ok) {
-        toast({ title: '重登录成功', variant: 'success' })
+        toast({ title: t('重登录成功'), variant: 'success' })
       } else {
-        toast({ title: '重登录失败', description: res.message, variant: 'destructive' })
+        toast({ title: t('重登录失败'), description: res.message, variant: 'destructive' })
       }
       onDone?.()
     } catch (e) {
       const msg = e instanceof ApiCallError ? e.message : String(e)
-      toast({ title: '重登录失败', description: msg, variant: 'destructive' })
+      toast({ title: t('重登录失败'), description: msg, variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -32,7 +33,7 @@ export function ReloginButton({ accountId, onDone }: Props) {
   return (
     <Button variant="outline" size="sm" onClick={handleClick} disabled={busy}>
       <RotateCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
-      重登
+      {t('重登')}
     </Button>
   )
 }

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { post, put, ApiCallError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 import type { Account } from '@/lib/types'
+import { t } from '@/lib/i18n'
 
 interface Props {
   /** When set, the form is in "edit" mode. */
@@ -30,13 +31,13 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
         if (token) body.token = token
         if (cookies) body.cookies = cookies
         await put(`/admin/api/accounts/${encodeURIComponent(account.id)}`, body)
-        toast({ title: '账号已保存', variant: 'success' })
+        toast({ title: t('账号已保存'), variant: 'success' })
         // Refetch the account to get the fresh data.
         const saved: Account = { ...account, email: email || account.email }
         onSaved(saved)
       } else {
         if (!token || !cookies) {
-          toast({ title: 'Token 和 Cookies 不能为空', variant: 'destructive' })
+          toast({ title: t('Token 和 Cookies 不能为空'), variant: 'destructive' })
           setBusy(false)
           return
         }
@@ -45,7 +46,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
           cookies,
           email: email || '',
         })
-        toast({ title: '账号添加成功', variant: 'success' })
+        toast({ title: t('账号添加成功'), variant: 'success' })
         onSaved(res.account)
         setEmail('')
         setToken('')
@@ -53,7 +54,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       }
     } catch (e) {
       const msg = e instanceof ApiCallError ? e.message : String(e)
-      toast({ title: '保存失败', description: msg, variant: 'destructive' })
+      toast({ title: t('保存失败'), description: msg, variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -62,12 +63,12 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="acct-email">标识（邮箱 / 备注）</Label>
+        <Label htmlFor="acct-email">{t('标识（邮箱 / 备注）')}</Label>
         <Input
           id="acct-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="例如 user@example.com"
+          placeholder={t('例如 user@example.com')}
           autoComplete="off"
         />
       </div>
@@ -77,7 +78,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
           id="acct-token"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder={isEdit ? '留空则不修改 Token' : 'Authorization Bearer token（不要带 Bearer）'}
+          placeholder={isEdit ? t('留空则不修改 Token') : t('Authorization Bearer token（不要带 Bearer）')}
           autoComplete="off"
           className="font-mono text-xs"
         />
@@ -88,7 +89,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
           id="acct-cookies"
           value={cookies}
           onChange={(e) => setCookies(e.target.value)}
-          placeholder={isEdit ? '留空则不修改 Cookies' : 'cf_clearance=...; session=...'}
+          placeholder={isEdit ? t('留空则不修改 Cookies') : 'cf_clearance=...; session=...'}
           autoComplete="off"
           className="font-mono text-xs"
         />
@@ -96,17 +97,17 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       <div className="flex items-center gap-2 pt-2">
         <Button onClick={handleSave} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {isEdit ? '保存' : '添加'}
+          {isEdit ? t('保存') : t('添加')}
         </Button>
         {isEdit && onCancel && (
           <Button variant="outline" onClick={onCancel} disabled={busy}>
-            取消
+            {t('取消')}
           </Button>
         )}
       </div>
       {!isEdit && (
         <p className="text-xs text-muted-foreground">
-          新增账号会持久化到 data/accounts.json。
+          {t('新增账号会持久化到 data/accounts.json。')}
         </p>
       )}
     </div>

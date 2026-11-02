@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useApi } from '@/hooks/useApi'
 import { ApiCallError } from '@/lib/api'
 import type { ModelsResponse } from '@/lib/types'
+import { t } from '@/lib/i18n'
 
 interface Props {
   value: string
@@ -26,7 +27,7 @@ export function ModelSelector({ value, onChange, labels }: Props) {
   if (error) {
     return (
       <div className="text-xs text-destructive">
-        无法加载模型列表：{' '}
+        {t('无法加载模型列表：')}{' '}
         {error instanceof ApiCallError ? error.message : String(error)}
       </div>
     )
@@ -37,7 +38,7 @@ export function ModelSelector({ value, onChange, labels }: Props) {
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger>
-        <SelectValue placeholder="选择模型…" />
+        <SelectValue placeholder={t('选择模型…')} />
       </SelectTrigger>
       <SelectContent>
         {models.map((m) => (

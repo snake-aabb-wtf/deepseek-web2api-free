@@ -10,10 +10,20 @@ import './styles/globals.css'
 import { useThemeStore, applyTheme } from './stores/theme'
 applyTheme(useThemeStore.getState().theme)
 
+import { useLangStore, applyLang } from './stores/lang'
+applyLang(useLangStore.getState().lang)
+
+// Strings are translated at render time via t(), so remount the app when the
+// language changes to re-render everything, including memoized parts.
+function Root() {
+  const lang = useLangStore((s) => s.lang)
+  return <App key={lang} />
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <TooltipProvider delayDuration={200}>
-      <App />
+      <Root />
       <Toaster />
     </TooltipProvider>
   </React.StrictMode>,
