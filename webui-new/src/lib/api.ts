@@ -7,6 +7,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 import type { ApiError } from './types'
+import { t } from '@/lib/i18n'
 
 export class ApiCallError extends Error {
   readonly status: number
@@ -55,7 +56,7 @@ export async function api<T = unknown>(
   // can react via the auth-store subscription.
   if (res.status === 401) {
     useAuthStore.getState().logout()
-    throw new ApiCallError(401, '未授权，请重新登录')
+    throw new ApiCallError(401, t('未授权，请重新登录'))
   }
 
   if (!res.ok) {

@@ -3,6 +3,7 @@ import { Activity, Users, FlaskConical, Settings, ChevronsLeft, ChevronsRight } 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import { t } from '@/lib/i18n'
 
 interface NavItem {
   to: string
@@ -38,7 +39,7 @@ export function Sidebar() {
           <div className="ml-2.5 flex-1 overflow-hidden">
             <div className="truncate text-sm font-semibold">DS2API</div>
             <div className="truncate text-[10px] text-muted-foreground tracking-wider">
-              管理面板
+              {t('管理面板')}
             </div>
           </div>
         )}
@@ -62,10 +63,10 @@ export function Sidebar() {
                   ? 'bg-primary/15 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
               )}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.label) : undefined}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate">{t(item.label)}</span>}
             </NavLink>
           )
         })}
@@ -78,14 +79,14 @@ export function Sidebar() {
           size="sm"
           className="w-full justify-center"
           onClick={() => setCollapsed(!collapsed)}
-          aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+          aria-label={collapsed ? t('展开侧边栏') : t('折叠侧边栏')}
         >
           {collapsed ? (
             <ChevronsRight className="h-4 w-4" />
           ) : (
             <>
               <ChevronsLeft className="h-4 w-4" />
-              <span>折叠</span>
+              <span>{t('折叠')}</span>
             </>
           )}
         </Button>
