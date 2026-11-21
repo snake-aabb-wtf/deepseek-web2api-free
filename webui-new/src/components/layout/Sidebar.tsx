@@ -3,7 +3,7 @@ import { Activity, Users, FlaskConical, Settings, ChevronsLeft, ChevronsRight } 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface NavItem {
   to: string
@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 export function Sidebar() {
+  useLanguage()
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
 

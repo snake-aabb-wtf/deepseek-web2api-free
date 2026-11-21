@@ -1,4 +1,4 @@
-import { useLangStore } from '@/stores/lang'
+import { useLangStore, type Lang } from '@/stores/lang'
 import { EN } from './i18n-en'
 
 /**
@@ -12,4 +12,14 @@ export function t(zh: string, vars?: Record<string, string | number>): string {
     for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v))
   }
   return s
+}
+
+/**
+ * Subscribe the calling component to language changes. `t()` reads the store
+ * directly, so any component that renders translated text calls this hook to
+ * re-render in place when the language switches (instead of remounting the
+ * app, which would discard page state).
+ */
+export function useLanguage(): Lang {
+  return useLangStore((s) => s.lang)
 }

@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { Account } from '@/lib/types'
 import { Link } from 'react-router-dom'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   accounts: Account[]
@@ -13,6 +13,7 @@ interface Props {
 }
 
 export function PoolStatusCard({ accounts, total, idle, busy, error }: Props) {
+  useLanguage()
   const idlePct = total > 0 ? (idle / total) * 100 : 0
   const busyPct = total > 0 ? (busy / total) * 100 : 0
   const errorPct = total > 0 ? (error / total) * 100 : 0

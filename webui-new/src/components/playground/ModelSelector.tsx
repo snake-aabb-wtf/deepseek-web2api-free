@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useApi } from '@/hooks/useApi'
 import { ApiCallError } from '@/lib/api'
 import type { ModelsResponse } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   value: string
@@ -13,6 +13,7 @@ interface Props {
 }
 
 export function ModelSelector({ value, onChange, labels }: Props) {
+  useLanguage()
   const { data, error } = useApi<ModelsResponse>('/v1/models')
   const [firstRender, setFirstRender] = useState(true)
 

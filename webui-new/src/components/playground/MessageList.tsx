@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { User, Bot } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 /**
  * A single conversation turn. `reasoning` (the thinking chain produced when
@@ -27,6 +27,7 @@ interface Props {
 
 /** Collapsible reasoning block shown above the answer. */
 function ReasoningBlock({ text }: { text: string }) {
+  useLanguage()
   if (!text.trim()) return null
   return (
     <details className="mb-2 rounded-md bg-muted/60 p-2 text-xs text-muted-foreground">
@@ -39,6 +40,7 @@ function ReasoningBlock({ text }: { text: string }) {
 }
 
 export function MessageList({ messages, streaming }: Props) {
+  useLanguage()
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })

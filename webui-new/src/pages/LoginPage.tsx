@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label'
 import { api, ApiCallError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { toast } from '@/hooks/use-toast'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 export default function LoginPage() {
+  useLanguage()
   const [password, setPassword] = useState('')
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)

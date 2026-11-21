@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { del, get, post } from '@/lib/api'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface ApiKeyRecord {
   id: string
@@ -25,6 +25,7 @@ interface ApiKeyCreateResponse {
 }
 
 export function ApiKeyManager() {
+  useLanguage()
   const [keys, setKeys] = useState<ApiKeyRecord[]>([])
   const [name, setName] = useState('')
   const [newKey, setNewKey] = useState<string | null>(null)

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { post, put, ApiCallError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 import type { Account } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   /** When set, the form is in "edit" mode. */
@@ -16,6 +16,7 @@ interface Props {
 }
 
 export function AccountForm({ account, onSaved, onCancel }: Props) {
+  useLanguage()
   const isEdit = !!account
   const [email, setEmail] = useState(account?.email ?? '')
   const [token, setToken] = useState('')

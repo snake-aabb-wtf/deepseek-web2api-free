@@ -28,9 +28,10 @@ import { AccountForm } from '@/components/accounts/AccountForm'
 import { AccountTable } from '@/components/accounts/AccountTable'
 import { AccountDetailDrawer } from '@/components/accounts/AccountDetailDrawer'
 import type { Account, AccountsResponse } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 export default function AccountsPage() {
+  useLanguage()
   const { data, error, loading, refresh } = useApi<AccountsResponse>('/admin/api/accounts', {
     pollMs: 10000,
   })

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { get } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface EnvInfo {
   name: string
@@ -46,6 +46,7 @@ interface EnvInfoResponse {
 }
 
 export function EnvPreview() {
+  useLanguage()
   const [info, setInfo] = useState<EnvInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -183,6 +184,7 @@ export function EnvPreview() {
 }
 
 function Row({ k, v, warn }: { k: string; v: string; warn?: boolean }) {
+  useLanguage()
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-muted-foreground">{k}</span>

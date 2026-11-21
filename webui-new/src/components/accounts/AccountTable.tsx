@@ -14,7 +14,7 @@ import { StateBadge } from './StateBadge'
 import { ReloginButton } from './ReloginButton'
 import { truncateMiddle } from '@/lib/utils'
 import type { Account } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   accounts: Account[]
@@ -24,6 +24,7 @@ interface Props {
 }
 
 export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
+  useLanguage()
   return (
     <Table>
       <TableHeader>

@@ -1,12 +1,13 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HistoryPoint } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   points: HistoryPoint[]
 }
 
 export function RequestsChart({ points }: Props) {
+  useLanguage()
   const data = points.map((p) => ({
     t: new Date(p.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     [t('成功')]: p.success,

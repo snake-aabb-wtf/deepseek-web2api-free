@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { Compass, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 export default function NotFoundPage() {
+  useLanguage()
   return (
     <div className="flex h-full items-center justify-center">
       <div className="text-center">

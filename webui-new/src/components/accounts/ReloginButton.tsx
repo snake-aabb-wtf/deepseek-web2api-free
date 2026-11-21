@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { post, ApiCallError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 import type { ReloginResponse } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   accountId: string
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function ReloginButton({ accountId, onDone }: Props) {
+  useLanguage()
   const [busy, setBusy] = useState(false)
   const handleClick = async () => {
     setBusy(true)

@@ -13,7 +13,7 @@ import { ReloginButton } from './ReloginButton'
 import { toast } from '@/hooks/use-toast'
 import { formatUptime, truncateMiddle } from '@/lib/utils'
 import type { Account } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 /** Format a unix-seconds timestamp as "YYYY-MM-DD HH:mm:ss" in local time. */
 function fmtTs(t: number): string {
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export function AccountDetailDrawer({ account, onClose, onRelogin }: Props) {
+  useLanguage()
   const open = !!account
 
   return (
@@ -137,6 +138,7 @@ function DetailRow({
   mono?: boolean
   copyable?: boolean
 }) {
+  useLanguage()
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="text-muted-foreground shrink-0">{label}</span>

@@ -1,9 +1,10 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { EnvPreview } from '@/components/settings/EnvPreview'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 export default function SettingsPage() {
+  useLanguage()
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader

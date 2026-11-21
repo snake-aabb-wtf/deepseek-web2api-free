@@ -21,7 +21,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ApiCallError } from '@/lib/api'
 import { ModelSelector } from '@/components/playground/ModelSelector'
 import { MessageList, type ChatMessage, type StreamingState } from '@/components/playground/MessageList'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 /** Messages sent to the backend (OpenAI-compatible subset we support). */
 interface ApiMessage {
@@ -47,6 +47,7 @@ const modelLabels = (): Record<string, string> => ({
 })
 
 export default function PlaygroundPage() {
+  useLanguage()
   const token = useAuthStore((s) => s.token)
   const { toast } = useToast()
 

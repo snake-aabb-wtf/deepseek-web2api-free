@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useTheme } from '@/hooks/useTheme'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface TopBarProps {
   onRefresh?: () => void
@@ -20,6 +20,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ onRefresh, refreshing }: TopBarProps) {
+  useLanguage()
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
   const logout = useAuthStore((s) => s.logout)

@@ -21,9 +21,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ApiCallError } from '@/lib/api'
 import { formatLatency, formatNumber, formatPercent, formatUptime } from '@/lib/utils'
 import type { AccountsResponse, HistoryResponse, StatsResponse } from '@/lib/types'
-import { t } from '@/lib/i18n'
+import { t, useLanguage } from '@/lib/i18n'
 
 export default function DashboardPage() {
+  useLanguage()
   const stats = useApi<StatsResponse>('/admin/api/stats', { pollMs: 5000 })
   const accts = useApi<AccountsResponse>('/admin/api/accounts', { pollMs: 10000 })
   const history = useApi<HistoryResponse>('/admin/api/history', { pollMs: 30000 })
@@ -196,6 +197,7 @@ function PercentileRow({
   value?: number
   tone?: 'default' | 'warning' | 'destructive'
 }) {
+  useLanguage()
   const toneClass =
     tone === 'warning'
       ? 'text-warning'
@@ -219,6 +221,7 @@ function TokenRow({
   label: string
   value?: number
 }) {
+  useLanguage()
   return (
     <div className="flex items-center justify-between">
       <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -231,6 +234,7 @@ function TokenRow({
 }
 
 function ChartError({ err }: { err: ApiCallError }) {
+  useLanguage()
   return (
     <div className="flex h-64 flex-col items-center justify-center text-sm text-muted-foreground">
       <XCircle className="mb-2 h-6 w-6 text-destructive" />
@@ -241,6 +245,7 @@ function ChartError({ err }: { err: ApiCallError }) {
 }
 
 function EmptyChart() {
+  useLanguage()
   return (
     <div className="flex h-64 flex-col items-center justify-center text-sm text-muted-foreground">
       <BarChart3 className="mb-2 h-6 w-6 opacity-50" />
