@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { t } from '@/lib/i18n'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -13,10 +14,10 @@ export function formatUptime(seconds: number | null | undefined): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
   let r = ''
-  if (d > 0) r += `${d}天 `
-  if (h > 0) r += `${h}时 `
-  if (d === 0 && h === 0) r += `${m}分`
-  return r.trim() || `${s}秒`
+  if (d > 0) r += t('{n}天 ', { n: d })
+  if (h > 0) r += t('{n}时 ', { n: h })
+  if (d === 0 && h === 0) r += t('{n}分', { n: m })
+  return r.trim() || t('{n}秒', { n: s })
 }
 
 /** Format a millisecond latency: < 1s → "NNNms", else "N.NNs". */
@@ -38,13 +39,13 @@ export function formatPercent(rate: number | null | undefined): string {
   return `${(rate * 100).toFixed(1)}%`
 }
 
-/** Map backend account.state to a display label (Chinese). */
+/** Map backend account.state to a display label. */
 export function stateLabel(state: string): string {
   return (
     {
-      idle: '空闲',
-      busy: '繁忙',
-      error: '异常',
+      idle: t('空闲'),
+      busy: t('繁忙'),
+      error: t('异常'),
     } as Record<string, string>
   )[state] ?? state
 }

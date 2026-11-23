@@ -894,7 +894,7 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(
             status_code=429,
-            detail=f"上游限流：{e.args[0] if e.args else '请求过于频繁'}，请稍后重试",
+            detail=f"Upstream rate limited: {e.args[0] if e.args else 'too many requests'}, please retry later (上游限流，请稍后重试)",
         )
     except UpstreamHintError as e:
         get_stats().record(MODEL_NAME, 0, success=False)
@@ -906,7 +906,7 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
         get_stats().record(MODEL_NAME, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=502, detail="上游返回空响应（可能触发限流），请稍后重试")
+        raise HTTPException(status_code=502, detail="Upstream returned an empty response (possibly rate limited), please retry later (上游返回空响应（可能触发限流），请稍后重试)")
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False)
         pool.mark_error(acq.acct, str(e))
@@ -1011,7 +1011,7 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
         get_stats().record(MODEL_NAME, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=429, detail=f"上游限流：{e.args[0] if e.args else '请求过于频繁'}，请稍后重试")
+        raise HTTPException(status_code=429, detail=f"Upstream rate limited: {e.args[0] if e.args else 'too many requests'}, please retry later (上游限流，请稍后重试)")
     except UpstreamHintError as e:
         get_stats().record(MODEL_NAME, 0, success=False)
         pool.mark_error(acq.acct, str(e))
@@ -1022,7 +1022,7 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
         get_stats().record(MODEL_NAME, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=502, detail="上游返回空响应（可能触发限流），请稍后重试")
+        raise HTTPException(status_code=502, detail="Upstream returned an empty response (possibly rate limited), please retry later (上游返回空响应（可能触发限流），请稍后重试)")
     except Exception as e:
         get_stats().record(MODEL_NAME, 0, success=False)
         pool.mark_error(acq.acct, str(e))

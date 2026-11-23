@@ -139,6 +139,10 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Test
+        working-directory: webui-new
+        run: npm test
+
       - name: Build
         working-directory: webui-new
         run: npm run build

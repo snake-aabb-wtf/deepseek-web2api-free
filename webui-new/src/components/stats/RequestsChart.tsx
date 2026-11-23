@@ -1,15 +1,17 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HistoryPoint } from '@/lib/types'
+import { t, useLanguage } from '@/lib/i18n'
 
 interface Props {
   points: HistoryPoint[]
 }
 
 export function RequestsChart({ points }: Props) {
+  useLanguage()
   const data = points.map((p) => ({
     t: new Date(p.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    成功: p.success,
-    失败: p.failed,
+    [t('成功')]: p.success,
+    [t('失败')]: p.failed,
   }))
   return (
     <div className="h-64">
@@ -36,8 +38,8 @@ export function RequestsChart({ points }: Props) {
               fontSize: 12,
             }}
           />
-          <Area type="monotone" dataKey="成功" stroke="hsl(160 84% 39%)" fill="url(#gradSuccess)" strokeWidth={2} />
-          <Area type="monotone" dataKey="失败" stroke="hsl(0 84% 60%)" fill="url(#gradFailed)" strokeWidth={2} />
+          <Area type="monotone" dataKey={t('成功')} stroke="hsl(160 84% 39%)" fill="url(#gradSuccess)" strokeWidth={2} />
+          <Area type="monotone" dataKey={t('失败')} stroke="hsl(0 84% 60%)" fill="url(#gradFailed)" strokeWidth={2} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

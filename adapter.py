@@ -123,12 +123,12 @@ def _mute_msg(raw) -> str | None:
         bd = d.get("biz_data")
         if isinstance(bd, dict) and bd.get("mute_until"):
             try:
-                until = "，解封时间 " + datetime.datetime.fromtimestamp(
+                until = ", unmuted at " + datetime.datetime.fromtimestamp(
                     float(bd["mute_until"])
                 ).strftime("%Y-%m-%d %H:%M")
             except (TypeError, ValueError, OSError, OverflowError):
                 until = ""
-        return f"上游账号已静音：{biz_msg or 'user is muted'}{until}"
+        return f"Upstream account muted: {biz_msg or 'user is muted'}{until} (上游账号已静音)"
     return None
 
 
