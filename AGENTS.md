@@ -1,6 +1,6 @@
 # AGENTS.md — DeepSeek Chat API Proxy (Preview)
 
-当前发布版本：**v4.1.5**。中文变更与升级说明见 [docs/release-notes/v4.1.5.md](docs/release-notes/v4.1.5.md)。FastAPI、管理接口及 WebUI 包元信息已同步为 4.1.5；下文旧版本记录保留历史版本号。
+当前发布版本为 **v4.2.0**。FastAPI、管理接口及 WebUI 包使用同一版本号。[中文发布与升级说明](docs/release-notes/v4.2.0.md)
 
 ## Responses API（2026-10-27）
 
@@ -225,7 +225,8 @@
 
 ### 1.3 项目版本
 
-- 当前主线：`v4.1.5`（2026-10-28）— 修复重复 DSML 分隔符的流式识别与扫描性能；完整变更见 [docs/release-notes/v4.1.5.md](docs/release-notes/v4.1.5.md)。
+- 当前主线 `v4.2.0`（2026-11-23）新增中英文管理界面，切换语言时保留当前页面状态。[发布说明](docs/release-notes/v4.2.0.md)
+- `v4.1.5`（2026-10-28）修复重复 DSML 分隔符的流式识别与扫描性能。[发布说明](docs/release-notes/v4.1.5.md)
 - `v4.1.0`（2026-10-27）— 新增 Responses API、图片续聊、多函数调用和标准 SDK 兼容验收；完整变更见 [docs/release-notes/v4.1.0.md](docs/release-notes/v4.1.0.md)。
 - 历史版本：`v3.3.8`（2026-10-18）— 跟进上游「快速模式 / 专家模式」合并：**收敛为单模型**（`/v1/models` 只列 `MODEL_NAME`，旧名 `deepseek-reasoner` 降为不改行为的别名，思考由 `THINKING` 决定），`model_type` 降级为协议字段，`MODEL_ROUTES` 降级为可选高级覆盖，新增统一决策函数 `resolve_model_controls()`，合并流式/非流式会话缓存键，并修复「客户端每轮只发最新消息」时的多轮失忆；完整变更见 [docs/release-notes/v3.3.8.md](docs/release-notes/v3.3.8.md)
 - `v3.3.6`（2026-10）— 在 v3.3.5 基础上新增 WebUI 客户端 API Key 管理，统一账号池配置，并改进 Windows 启动脚本和 WebUI 依赖构建失败处理；完整变更见 [docs/release-notes/v3.3.6.md](docs/release-notes/v3.3.6.md)

@@ -2,7 +2,7 @@
 
 Responses API: verified with Python sync/async and JavaScript SDKs for text/images, typed SSE, multiple function calls and immutable `previous_response_id` state. See the [supported subset and examples](docs/responses-api_en.md).
 
-Current version: **v4.1.5** — [Release notes (Chinese)](docs/release-notes/v4.1.5.md): repeated DSML separator streaming recognition, markup-leak and long-pipe scan fixes.
+**v4.2.0** adds English to the admin panel. After signing in, choose English or Chinese from the top bar. Your browser remembers your choice. [Release and upgrade notes (Chinese)](docs/release-notes/v4.2.0.md)
 
 > Convert DeepSeek Chat's (chat.deepseek.com) private API into an **OpenAI / Anthropic compatible** format.
 

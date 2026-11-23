@@ -1,6 +1,6 @@
 # DeepSeek Chat API Proxy
 
-当前版本：**v4.1.5** — [中文发布说明](docs/release-notes/v4.1.5.md)：修复重复 DSML 分隔符的流式识别、标签泄漏及长竖线扫描性能。
+**v4.2.0** 新增英文管理界面。登录后可在顶栏切换中文或英文，浏览器会记住选择。[发布与升级说明](docs/release-notes/v4.2.0.md)
 
 > 将 DeepSeek Chat (chat.deepseek.com) 的私有 API 转换为 OpenAI / Anthropic 兼容格式。
 
