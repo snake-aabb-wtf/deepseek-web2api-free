@@ -16,6 +16,7 @@ from ip_utils import get_real_client_ip, is_trusted_proxy
 from logger import get_logger
 from stats_history import get_history, start_sampler
 from api_key_store import get_api_key_store
+import request_log
 
 log = get_logger("admin")
 
@@ -283,6 +284,39 @@ async def create_api_key(req: ApiKeyCreateRequest, request: Request, response: R
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/api-keys/{key_id}/reveal")
+async def reveal_api_key(key_id: str, request: Request):
+    """Return the plaintext of one key so the operator can copy it."""
+    _check_auth(request)
+    key = get_api_key_store().reveal_key(key_id)
+    if key is None:
+        raise HTTPException(status_code=404, detail="Key plaintext unavailable (not recoverable or disabled)")
+    return {"key": key}
+
+
+class ApiKeyUpdateRequest(BaseModel):
+    name: str | None = None
+    enabled: bool | None = None
+
+
+@router.patch("/api-keys/{key_id}")
+async def update_api_key(key_id: str, req: ApiKeyUpdateRequest, request: Request):
+    """Rename and/or enable/disable a key."""
+    _check_auth(request)
+    store = get_api_key_store()
+    try:
+        record = None
+        if req.name is not None:
+            record = store.update_key(key_id, req.name)
+        if req.enabled is not None:
+            record = store.set_enabled(key_id, req.enabled)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if record is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"api_key": record}
+
+
 @router.delete("/api-keys/{key_id}")
 async def revoke_api_key(key_id: str, request: Request):
     _check_auth(request)
@@ -323,6 +357,14 @@ async def history(request: Request):
         "interval_secs": h.interval(),
         "points": h.points(),
     }
+
+
+@router.get("/requests")
+async def request_history(request: Request, limit: int = 100):
+    """Most recent per-request records for the dashboard 'request list'."""
+    _check_auth(request)
+    rows = request_log.recent(limit)
+    return {"total": request_log.count(), "rows": rows}
 
 
 @router.get("/env")

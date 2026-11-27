@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Activity, Users, FlaskConical, Settings, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Activity, Users, FlaskConical, Settings, ChevronsLeft, ChevronsRight, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
@@ -14,6 +14,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: '概览', icon: Activity, end: true },
+    { to: '/requests', label: '请求列表', icon: List },
   { to: '/accounts', label: '账号池', icon: Users },
   { to: '/playground', label: 'Playground', icon: FlaskConical },
   { to: '/settings', label: '设置', icon: Settings },

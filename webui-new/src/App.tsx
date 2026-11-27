@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { useAuthStore } from '@/stores/auth'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
+import RequestsPage from '@/pages/RequestsPage'
 import AccountsPage from '@/pages/AccountsPage'
 import PlaygroundPage from '@/pages/PlaygroundPage'
 import SettingsPage from '@/pages/SettingsPage'
@@ -29,7 +30,8 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
-          { path: 'accounts', element: <AccountsPage /> },
+          { path: 'requests', element: <RequestsPage /> },
+            { path: 'accounts', element: <AccountsPage /> },
           { path: 'accounts/:id', element: <AccountsPage /> },
           { path: 'playground', element: <PlaygroundPage /> },
           { path: 'settings', element: <SettingsPage /> },

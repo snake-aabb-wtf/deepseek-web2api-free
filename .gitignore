@@ -22,3 +22,9 @@ webui-new/.vite/
 .pytest_cache/
 tests/responses_compat/node_modules/
 *.egg-info/
+
+# Local request history (contains full conversation context) + backups + wheels
+data/request_history.jsonl
+data/*.bak-*
+tmp/
+webui-new/dist.bak-*/

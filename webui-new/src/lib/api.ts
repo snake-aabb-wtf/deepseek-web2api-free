@@ -89,6 +89,10 @@ export const post = <T = unknown>(path: string, body?: unknown, opts?: ApiOption
 export const put = <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
   api<T>(path, { ...opts, method: 'PUT', body })
 
+/** PATCH JSON helper. */
+export const patch = <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
+  api<T>(path, { ...opts, method: 'PATCH', body })
+
 /** DELETE helper. */
 export const del = <T = unknown>(path: string, opts?: ApiOptions) =>
   api<T>(path, { ...opts, method: 'DELETE' })

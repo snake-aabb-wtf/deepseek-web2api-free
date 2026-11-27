@@ -64,6 +64,31 @@ export interface HistoryResponse {
   points: HistoryPoint[]
 }
 
+export interface RequestRecord {
+  at: number
+  iso: string
+  kind: string
+  model: string
+  stream: boolean
+  ip: string
+  account?: string
+  account_id?: string
+  route: string
+  n_msgs: number
+  outcome: 'completed' | 'failed' | string
+  elapsed_ms: number
+  prompt_tokens: number
+  completion_tokens: number
+  error?: string
+  messages?: { role: string; content: string }[]
+  content?: { reply?: string; thinking?: string }
+}
+
+export interface RequestLogResponse {
+  total: number
+  rows: RequestRecord[]
+}
+
 export interface LoginRequest {
   password: string
 }
