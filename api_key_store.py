@@ -13,6 +13,8 @@ import threading
 import time
 from pathlib import Path
 
+from crypto import encrypt_str, decrypt_str, is_enabled as crypto_enabled
+
 
 _DEFAULT_PATH = Path(__file__).resolve().parent / "data" / "api_keys.sqlite3"
 _STORE: "ApiKeyStore | None" = None
@@ -72,18 +74,26 @@ class ApiKeyStore:
         key: str,
         created_at: int,
     ) -> None:
+        enc = ""
+        if crypto_enabled():
+            try:
+                enc = encrypt_str(key)
+            except Exception:
+                enc = ""
         conn.execute(
             """INSERT OR IGNORE INTO api_keys
-               (id, name, key_hash, key_prefix, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
+               (id, name, key_hash, key_prefix, key_enc, enabled, created_at)
+               VALUES (?, ?, ?, ?, ?, 1, ?)""",
             (
                 secrets.token_hex(8),
                 name,
                 cls._key_hash(key),
                 cls._prefix(key),
+                enc,
                 created_at,
             ),
         )
+
 
     def _initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,9 +106,16 @@ class ApiKeyStore:
                     name TEXT NOT NULL,
                     key_hash TEXT NOT NULL UNIQUE,
                     key_prefix TEXT NOT NULL,
+                    key_enc TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1,
                     created_at INTEGER NOT NULL
                 )"""
             )
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)")}
+            if "key_enc" not in cols:
+                conn.execute("ALTER TABLE api_keys ADD COLUMN key_enc TEXT NOT NULL DEFAULT ''")
+            if "enabled" not in cols:
+                conn.execute("ALTER TABLE api_keys ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS api_key_store_meta (
                     name TEXT PRIMARY KEY,
@@ -137,6 +154,7 @@ class ApiKeyStore:
             "id": row["id"],
             "name": row["name"],
             "prefix": row["key_prefix"],
+            "enabled": bool(row["enabled"]) if "enabled" in row.keys() else True,
             "created_at": row["created_at"],
         }
 
@@ -144,7 +162,7 @@ class ApiKeyStore:
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT id, name, key_prefix, created_at FROM api_keys "
+                "SELECT id, name, key_prefix, enabled, created_at FROM api_keys "
                 "ORDER BY created_at DESC, id DESC"
             ).fetchall()
             return [self._public_record(row) for row in rows]
@@ -164,9 +182,11 @@ class ApiKeyStore:
         digest = self._key_hash(candidate)
         conn = self._connect()
         try:
-            rows = conn.execute("SELECT key_hash FROM api_keys").fetchall()
+            rows = conn.execute("SELECT key_hash, enabled FROM api_keys").fetchall()
             matched = False
             for row in rows:
+                if not row["enabled"]:
+                    continue
                 matched = secrets.compare_digest(digest, row["key_hash"]) or matched
             return matched
         finally:
@@ -197,10 +217,67 @@ class ApiKeyStore:
             )
             conn.commit()
             row = conn.execute(
-                "SELECT id, name, key_prefix, created_at FROM api_keys WHERE key_hash = ?",
+                "SELECT id, name, key_prefix, enabled, created_at FROM api_keys WHERE key_hash = ?",
                 (self._key_hash(key),),
             ).fetchone()
             return {"key": key, "api_key": self._public_record(row)}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def reveal_key(self, key_id: str) -> str | None:
+        """Return the decrypted plaintext for an enabled key, or None."""
+        if not crypto_enabled():
+            return None
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT key_enc FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+            if not row or not row["key_enc"]:
+                return None
+            try:
+                return decrypt_str(row["key_enc"])
+            except Exception:
+                return None
+        finally:
+            conn.close()
+
+    def update_key(self, key_id: str, name: str) -> dict | None:
+        """Rename a key. Returns the updated public record or None if missing."""
+        normalized = name.strip()
+        if not normalized or len(normalized) > 64:
+            raise ValueError("Name must be 1-64 characters")
+        conn = self._connect()
+        try:
+            cur = conn.execute("UPDATE api_keys SET name = ? WHERE id = ?", (normalized, key_id))
+            if cur.rowcount == 0:
+                return None
+            conn.commit()
+            row = conn.execute(
+                "SELECT id, name, key_prefix, enabled, created_at FROM api_keys WHERE id = ?",
+                (key_id,),
+            ).fetchone()
+            return self._public_record(row)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def set_enabled(self, key_id: str, enabled: bool) -> dict | None:
+        """Enable or disable a key. Returns the public record or None if missing."""
+        conn = self._connect()
+        try:
+            cur = conn.execute("UPDATE api_keys SET enabled = ? WHERE id = ?", (1 if enabled else 0, key_id))
+            if cur.rowcount == 0:
+                return None
+            conn.commit()
+            row = conn.execute(
+                "SELECT id, name, key_prefix, enabled, created_at FROM api_keys WHERE id = ?",
+                (key_id,),
+            ).fetchone()
+            return self._public_record(row)
         except Exception:
             conn.rollback()
             raise

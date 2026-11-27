@@ -29,6 +29,7 @@ except ImportError as e:
     ) from e
 
 from logger import get_logger
+from prompt_compressor import compress_prompt, utf16_len, DEFAULT_LIMIT
 
 load_dotenv()
 log = get_logger("adapter")
@@ -533,6 +534,12 @@ class DeepSeekAdapter:
             mid = self._msg_counters.get(session_id, 0) + 1
             self._msg_counters[session_id] = mid
             parent_message_id = mid - 1 if mid > 1 else None
+        prompt, _cs = compress_prompt(prompt)
+        if _cs["original_chars"] > _cs["limit"]:
+            log.info("prompt_compressed", extra={"stream": stream,
+                "original_chars": _cs["original_chars"], "final_chars": _cs.get("final_chars"),
+                "lossless_only": _cs["lossless_only"], "dropped_turns": _cs["dropped_turns"],
+                "truncated": _cs["truncated"]})
         body = {
             "chat_session_id": session_id,
             "parent_message_id": parent_message_id,
@@ -857,6 +864,12 @@ class DeepSeekAdapter:
             mid = self._msg_counters.get(session_id, 0) + 1
             self._msg_counters[session_id] = mid
             parent_message_id = mid - 1 if mid > 1 else None
+        prompt, _cs = compress_prompt(prompt)
+        if _cs["original_chars"] > _cs["limit"]:
+            log.info("prompt_compressed", extra={"stream": True,
+                "original_chars": _cs["original_chars"], "final_chars": _cs.get("final_chars"),
+                "lossless_only": _cs["lossless_only"], "dropped_turns": _cs["dropped_turns"],
+                "truncated": _cs["truncated"]})
         body = {
             "chat_session_id": session_id,
             "parent_message_id": parent_message_id,

@@ -48,6 +48,7 @@ from admin import (
     verify_admin_token,
 )
 from stats_history import start_sampler
+import request_log
 from model_router import DEFAULT_MODEL_TYPE
 from tool_dsml import (
     parse_dsml_tool_calls,
@@ -74,9 +75,22 @@ from api_key_store import get_api_key_store
 load_dotenv()
 configure_from_env()
 log = get_logger("server")
+request_log.configure(os.path.dirname(os.path.abspath(__file__)))
 API_KEY_STORE = get_api_key_store()
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "deepseek-chat")
+
+
+def _record(elapsed_ms=0.0, success=True, prompt_tokens=0, completion_tokens=0, error=None,
+            content=None, cancelled=False):
+    """Single funnel for stats + per-request history so both stay in sync."""
+    get_stats().record(MODEL_NAME, elapsed_ms,
+                       prompt_tokens=prompt_tokens,
+                       completion_tokens=completion_tokens,
+                       success=success)
+    request_log.finish(success=success, prompt_tokens=prompt_tokens,
+                       completion_tokens=completion_tokens, error=error,
+                       content=content, cancelled=cancelled)
 #: Legacy mode knob.  DeepSeek merged quick/expert into a single model (the only
 #: remaining difference is ``thinking_enabled``), so ``MODE`` no longer selects a
 #: model: ``MODE=expert`` is honoured as "default thinking ON" for backward
@@ -775,6 +789,10 @@ async def list_models(request: Request):
 async def chat_completions(req: ChatCompletionRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    request_log.begin({"kind": "chat", "model": req.model, "stream": bool(req.stream),
+                       "ip": _client_ip(request), "n_msgs": len(req.messages or []),
+                       "route": "/v1/chat/completions",
+                         "messages": [{"role": m.role, "content": (m.content if isinstance(m.content, str) else str(m.content))[:2000]} for m in (req.messages or [])]})
     proxy_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     normalized, attachments = await run_in_threadpool(
         normalize_images, [m.model_dump() for m in req.messages], 'openai')
@@ -809,6 +827,10 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
 async def messages(req: AnthropicRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    request_log.begin({"kind": "message", "model": req.model, "stream": bool(getattr(req, "stream", False)),
+                       "ip": _client_ip(request), "n_msgs": len(req.messages or []),
+                       "route": "/v1/messages",
+                         "messages": [{"role": getattr(m, "role", "?"), "content": str(getattr(m, "content", ""))[:2000]} for m in (req.messages or [])]})
     proxy_id = _msg_id()
     system_str = req.system
     if isinstance(system_str, list):
@@ -869,6 +891,7 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
                          cache_key: str | None = None,
                          attachments: tuple[ImageAttachment, ...] = ()):
     acq = _acquire(cache_key=cache_key)
+    request_log.set_account(getattr(acq.acct, "email", ""), getattr(acq.acct, "id", ""))
     try:
         turn = prepare_turn(acq, prompt, attachments, thinking=thinking_mode,
                             model_type=model_type or DEFAULT_MODEL_TYPE)
@@ -881,15 +904,15 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
             acq.record_message_id(ready_out["response_message_id"],
                                   ready_out.get("session_id"),
                                   full_prompt=prompt)
-        get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
+        _record((time.time() - t0) * 1000, content={"reply": content[:4000], "thinking": thinking[:2000] if thinking else ""})
     except ImageError:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         raise
     except RateLimitError as e:
         # Match the OpenAI endpoint: upstream throttling is a client-visible
         # 429, not an opaque Anthropic 500. This includes account mute errors
         # because UserMutedError derives from RateLimitError.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(
@@ -897,18 +920,18 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
             detail=f"Upstream rate limited: {e.args[0] if e.args else 'too many requests'}, please retry later (上游限流，请稍后重试)",
         )
     except UpstreamHintError as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except UpstreamEmptyError:
         # Empty upstream bodies are transient and should not poison the
         # account pool, but the client still needs a meaningful 502.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(status_code=502, detail="Upstream returned an empty response (possibly rate limited), please retry later (上游返回空响应（可能触发限流），请稍后重试)")
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise
     finally:
@@ -932,6 +955,7 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                             cache_key: str | None = None,
                             attachments: tuple[ImageAttachment, ...] = ()):
     acq, turn = await _prepare_stream_account(prompt, attachments, cache_key, thinking_mode, model_type)
+    request_log.set_account(getattr(acq.acct, "email", ""), getattr(acq.acct, "id", ""))
     eff, ds_id = turn.prompt, turn.session_id
     t0 = time.time()
 
@@ -951,9 +975,9 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                 acq.record_message_id(ready_out["response_message_id"],
                                       ready_out.get("session_id"),
                                       full_prompt=prompt)
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
+            _record((time.time() - t0) * 1000, content={"reply": "".join(completion_parts)[:4000]})
         except Exception as e:
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False)
+            _record((time.time() - t0) * 1000, success=False)
             if isinstance(e, (RateLimitError, UpstreamEmptyError)):
                 if cache_key:
                     SESSION_CACHE.invalidate(cache_key)
@@ -985,6 +1009,7 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
     """Non-streaming completion with tool call detection."""
     prompt_tokens = count_text(prompt)
     acq = _acquire(cache_key=cache_key)
+    request_log.set_account(getattr(acq.acct, "email", ""), getattr(acq.acct, "id", ""))
     try:
         turn = prepare_turn(acq, prompt, attachments, thinking=thinking_mode,
                             model_type=model_type or DEFAULT_MODEL_TYPE)
@@ -998,33 +1023,33 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
                                   ready_out.get("session_id"),
                                   full_prompt=prompt)
         completion_tokens = count_text(content) + count_text(thinking)
-        get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
-                           prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+        _record((time.time() - t0) * 1000, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                content={"reply": content[:4000], "thinking": thinking[:2000] if thinking else ""})
     except ImageError:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         raise
     except RateLimitError as e:
         # Rate limiting is a transient upstream state, not a credential
         # problem — do NOT mark the account as errored, or the pool would
         # drain to 503 once the limiter cools down. Invalidate the cached
         # session so the next call starts fresh.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(status_code=429, detail=f"Upstream rate limited: {e.args[0] if e.args else 'too many requests'}, please retry later (上游限流，请稍后重试)")
     except UpstreamHintError as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except UpstreamEmptyError as e:
         # Transient empty responses (stale pooled connection / upstream
         # hiccup) — retried in the adapter already; do not poison the pool.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(status_code=502, detail="Upstream returned an empty response (possibly rate limited), please retry later (上游返回空响应（可能触发限流），请稍后重试)")
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        _record(0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise
     finally:
@@ -1095,6 +1120,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
     """Streaming completion with StreamSieve tool call detection and thinking support."""
     prompt_tokens = count_text(prompt)
     acq, turn = await _prepare_stream_account(prompt, attachments, cache_key, thinking_mode, model_type)
+    request_log.set_account(getattr(acq.acct, "email", ""), getattr(acq.acct, "id", ""))
     eff, ds_id = turn.prompt, turn.session_id
     tool_names = _get_tool_names(tools)
     t0 = time.time()
@@ -1203,12 +1229,10 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
             yield _openai_chunk(proxy_id, finish=True)
             yield "data: [DONE]\n\n"
             completion_tokens = count_text("".join(completion_parts))
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
-                               prompt_tokens=prompt_tokens,
-                               completion_tokens=completion_tokens)
+            _record((time.time() - t0) * 1000, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                    content={"reply": "".join(completion_parts)[:4000]})
         except Exception as e:
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False,
-                               prompt_tokens=prompt_tokens)
+            _record((time.time() - t0) * 1000, success=False, prompt_tokens=prompt_tokens)
             # Rate limit / transient empty responses are not credential
             # failures — keep the account usable instead of draining the pool.
             if isinstance(e, (RateLimitError, UpstreamEmptyError)):
